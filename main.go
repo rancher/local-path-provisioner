@@ -84,7 +84,7 @@ func startDaemon(c *cli.Context) error {
 	if provisionerName == "" {
 		return fmt.Errorf("invalid empty provisioner name")
 	}
-	provisioner := NewProvisioner()
+	provisioner := NewProvisioner(kubeClient)
 	pc := pvController.NewProvisionController(
 		kubeClient,
 		provisionerName,

@@ -14,7 +14,7 @@ rules:
   resources: ["nodes", "persistentvolumeclaims"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
-  resources: ["endpoints", "persistentvolumes"]
+  resources: ["endpoints", "persistentvolumes", "pods"]
   verbs: ["*"]
 - apiGroups: [""]
   resources: ["events"]
@@ -58,5 +58,6 @@ spec:
           imagePullPolicy: Always
           command:
           - local-path-provisioner
+          - --debug
           - start
       serviceAccountName: local-path-provisioner-service-account
