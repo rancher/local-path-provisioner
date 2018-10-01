@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+mkdir -p bin dist
+if [ -e ./scripts/$1 ]; then
+    exec ./scripts/"$@"
+else
+    exec "$@"
+fi

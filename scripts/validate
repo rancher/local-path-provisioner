@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+cd $(dirname $0)/..
+
+echo Running validation
+
+PACKAGES="$(find . -name '*.go' | grep -Ev '.pb.go' | xargs -I{} dirname {} | \
+	sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s/pkg|client)')"
+
+echo Packages: ${PACKAGES}
+echo Running: go vet
+go vet ${PACKAGES}
+echo Running: golint
+for i in ${PACKAGES}; do
+    if [ -n "$(golint $i | grep -v 'should have comment.*or be unexported' | grep -v 'just return error instead.' | tee /dev/stderr)" ]; then
+        failed=true
+    fi
+done
+test -z "$failed"
+echo Running: go fmt
+test -z "$(go fmt ${PACKAGES} | tee /dev/stderr)"
