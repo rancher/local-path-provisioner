@@ -52,6 +52,7 @@ spec:
       labels:
         app: local-path-provisioner
     spec:
+      serviceAccountName: local-path-provisioner-service-account
       containers:
         - name: local-path-provisioner
           image: yasker/local-path-provisioner:63df7c1
@@ -60,4 +61,12 @@ spec:
           - local-path-provisioner
           - --debug
           - start
-      serviceAccountName: local-path-provisioner-service-account
+          - --config
+          - /etc/config/config.json
+          volumeMounts:
+          - name: config-volume
+            mountPath: /etc/config/
+      volumes:
+        - name: config-volume
+          configMap:
+            name: local-path-config

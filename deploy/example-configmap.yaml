@@ -1,0 +1,24 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: local-path-config
+  namespace: default
+data:
+  config.json: |-
+        {
+                "nodePathMap":[
+                {
+                        "node":"yasker-lp-dev1",
+                        "paths":["/opt", "/data1"]
+                },
+                {
+                        "node":"yasker-lp-dev2",
+                        "paths":["/opt"]
+                },
+                {
+                        "node":"yasker-lp-dev3",
+                        "paths":["/data3"]
+                }
+                ]
+        }
+

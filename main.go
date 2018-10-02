@@ -22,6 +22,7 @@ var (
 
 	FlagProvisionerName = "provisioner-name"
 	EnvProvisionerName  = "PROVISIONER_NAME"
+	FlagConfigFile      = "config"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -48,9 +49,14 @@ func StartCmd() cli.Command {
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:   FlagProvisionerName,
-				Usage:  "Specify provisioner name",
+				Usage:  "Optional. Specify provisioner name.",
 				EnvVar: EnvProvisionerName,
 				Value:  DefaultProvisionerName,
+			},
+			cli.StringFlag{
+				Name:  FlagConfigFile,
+				Usage: "Required. Provisioner configuration file.",
+				Value: "",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -84,7 +90,11 @@ func startDaemon(c *cli.Context) error {
 	if provisionerName == "" {
 		return fmt.Errorf("invalid empty provisioner name")
 	}
-	provisioner := NewProvisioner(kubeClient)
+	configFile := c.String(FlagConfigFile)
+	provisioner, err := NewProvisioner(kubeClient, configFile)
+	if err != nil {
+		return err
+	}
 	pc := pvController.NewProvisionController(
 		kubeClient,
 		provisionerName,

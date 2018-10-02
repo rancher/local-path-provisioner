@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -19,18 +21,55 @@ const (
 )
 
 var (
-	DefaultPath   = "/opt"
-	CleanupCounts = 120
+	CleanupTimeoutCounts = 120
 )
 
 type LocalPathProvisioner struct {
 	kubeClient *clientset.Clientset
+	configFile string
 }
 
-func NewProvisioner(kubeClient *clientset.Clientset) *LocalPathProvisioner {
+type NodePathMapData struct {
+	Node  string   `json:"node,omitempty"`
+	Paths []string `json:"paths,omitempty"`
+}
+
+type ConfigData struct {
+	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
+}
+
+type NodePathMap struct {
+	Paths map[string]struct{}
+}
+
+type Config struct {
+	NodePathMap map[string]*NodePathMap
+}
+
+func (c *Config) getRandomPathOnNode(node string) (string, error) {
+	npMap := c.NodePathMap[node]
+	if npMap == nil {
+		return "", fmt.Errorf("config doesn't contain node %v", node)
+	}
+	paths := npMap.Paths
+	if len(paths) == 0 {
+		return "", fmt.Errorf("no local path available on node %v", node)
+	}
+	path := ""
+	for path = range paths {
+		break
+	}
+	return path, nil
+}
+
+func NewProvisioner(kubeClient *clientset.Clientset, configFile string) (*LocalPathProvisioner, error) {
+	if _, err := getConfig(configFile); err != nil {
+		return nil, errors.Wrapf(err, "invalidate config file %v", configFile)
+	}
 	return &LocalPathProvisioner{
 		kubeClient: kubeClient,
-	}
+		configFile: configFile,
+	}, nil
 }
 
 func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.PersistentVolume, error) {
@@ -47,10 +86,20 @@ func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.P
 	if opts.SelectedNode == nil {
 		return nil, fmt.Errorf("configuration error, no node was specified")
 	}
-	name := opts.PVName
-	path := filepath.Join(DefaultPath, name)
 
-	logrus.Infof("Created volume %v", name)
+	cfg, err := getConfig(p.configFile)
+	if err != nil {
+		return nil, err
+	}
+
+	basePath, err := cfg.getRandomPathOnNode(node.Name)
+	if err != nil {
+		return nil, err
+	}
+	name := opts.PVName
+	path := filepath.Join(basePath, name)
+
+	logrus.Infof("Created volume %v at %v:%v", name, node.Name, path)
 	fs := v1.PersistentVolumeFilesystem
 	hostPathType := v1.HostPathDirectoryOrCreate
 
@@ -159,9 +208,12 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 	if name == "" || path == "" || node == "" {
 		return fmt.Errorf("invalid empty name or path or node")
 	}
-	//TODO match up with node prefixes, make sure it's one of them (and not `/`)
-	if filepath.Clean(path) == "/" {
-		return fmt.Errorf("not sure why you want to DESTROY the root directory")
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	if path == "/" {
+		return fmt.Errorf("not sure why you want to DESTROY THE ROOT DIRECTORY")
 	}
 	hostPathType := v1.HostPathDirectoryOrCreate
 	cleanupPod := &v1.Pod{
@@ -170,6 +222,7 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 		},
 		Spec: v1.PodSpec{
 			RestartPolicy: v1.RestartPolicyNever,
+			NodeName:      node,
 			Containers: []v1.Container{
 				{
 					Name:    "local-path-cleanup",
@@ -213,7 +266,7 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 	}()
 
 	completed := false
-	for i := 0; i < CleanupCounts; i++ {
+	for i := 0; i < CleanupTimeoutCounts; i++ {
 		if pod, err := p.kubeClient.CoreV1().Pods(namespace).Get(pod.Name, metav1.GetOptions{}); err != nil {
 			return err
 		} else if pod.Status.Phase == v1.PodSucceeded {
@@ -223,9 +276,59 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 		time.Sleep(1 * time.Second)
 	}
 	if !completed {
-		return fmt.Errorf("cleanup process timeout after %v seconds", CleanupCounts)
+		return fmt.Errorf("cleanup process timeout after %v seconds", CleanupTimeoutCounts)
 	}
 
-	logrus.Infof("Volume %v has been cleaned up", name)
+	logrus.Infof("Volume %v has been cleaned up from %v:%v", name, node, path)
 	return nil
+}
+
+func getConfig(configFile string) (cfg *Config, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to load config file %v", configFile)
+	}()
+	f, err := os.Open(configFile)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var data ConfigData
+	if err := json.NewDecoder(f).Decode(&data); err != nil {
+		return nil, err
+	}
+	cfg, err = canonicalizeConfig(&data)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "config canonicalization failed")
+	}()
+	cfg = &Config{}
+	cfg.NodePathMap = map[string]*NodePathMap{}
+	for _, n := range data.NodePathMap {
+		if cfg.NodePathMap[n.Node] != nil {
+			return nil, fmt.Errorf("duplicate node %v", n.Node)
+		}
+		npMap := &NodePathMap{Paths: map[string]struct{}{}}
+		cfg.NodePathMap[n.Node] = npMap
+		for _, p := range n.Paths {
+			if p[0] != '/' {
+				return nil, fmt.Errorf("path must start with / for path %v on node %v", p, n.Node)
+			}
+			path, err := filepath.Abs(p)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := npMap.Paths[path]; ok {
+				return nil, fmt.Errorf("duplicate path %v on node %v", p, n.Node)
+			}
+			npMap.Paths[path] = struct{}{}
+		}
+	}
+	return cfg, nil
 }
