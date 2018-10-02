@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -212,9 +213,15 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 	if err != nil {
 		return err
 	}
-	if path == "/" {
-		return fmt.Errorf("not sure why you want to DESTROY THE ROOT DIRECTORY")
+	path = strings.TrimSuffix(path, "/")
+	parentDir, volumeDir := filepath.Split(path)
+	parentDir = strings.TrimSuffix(parentDir, "/")
+	volumeDir = strings.TrimSuffix(volumeDir, "/")
+	if parentDir == "" || volumeDir == "" {
+		// it covers the `/` case
+		return fmt.Errorf("invalid path %v for removal: cannot find parent dir or volume dir", path)
 	}
+
 	hostPathType := v1.HostPathDirectoryOrCreate
 	cleanupPod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -228,7 +235,7 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 					Name:    "local-path-cleanup",
 					Image:   "busybox",
 					Command: []string{"rm"},
-					Args:    []string{"-rf", "/data-to-cleanup/*"},
+					Args:    []string{"-rf", filepath.Join("/data-to-cleanup/", volumeDir)},
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      "data-to-cleanup",
@@ -243,7 +250,7 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 					Name: "data-to-cleanup",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: path,
+							Path: parentDir,
 							Type: &hostPathType,
 						},
 					},
