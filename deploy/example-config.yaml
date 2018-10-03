@@ -10,6 +10,14 @@ data:
                 {
                         "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
                         "paths":["/opt/local-path-provisioner"]
+                },
+                {
+                        "node":"yasker-lp-dev1",
+                        "paths":["/opt/local-path-provisioner", "/data1"]
+                },
+                {
+                        "node":"yasker-lp-dev3",
+                        "paths":[]
                 }
                 ]
         }
