@@ -2,14 +2,14 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: local-path-config
-  namespace: default
+  namespace: local-path-storage
 data:
   config.json: |-
         {
                 "nodePathMap":[
                 {
                         "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
-                        "paths":["/opt"]
+                        "paths":["/opt/local-path-provisioner"]
                 },
                 {
                         "node":"yasker-lp-dev1",
@@ -17,7 +17,7 @@ data:
                 },
                 {
                         "node":"yasker-lp-dev3",
-                        "paths":["/data3"]
+                        "paths":[]
                 }
                 ]
         }

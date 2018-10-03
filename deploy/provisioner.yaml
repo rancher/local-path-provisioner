@@ -1,14 +1,19 @@
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-path-storage
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: local-path-provisioner-service-account
-  namespace: default
+  namespace: local-path-storage
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
   name: local-path-provisioner-role
-  namespace: default
+  namespace: local-path-storage
 rules:
 - apiGroups: [""]
   resources: ["nodes", "persistentvolumeclaims"]
@@ -27,7 +32,7 @@ apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
   name: local-path-provisioner-bind
-  namespace: default
+  namespace: local-path-storage
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -35,13 +40,13 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: local-path-provisioner-service-account
-  namespace: default
+  namespace: local-path-storage
 ---
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: local-path-provisioner
-  namespace: default
+  namespace: local-path-storage
 spec:
   replicas: 1
   selector:
@@ -54,18 +59,23 @@ spec:
     spec:
       serviceAccountName: local-path-provisioner-service-account
       containers:
-        - name: local-path-provisioner
-          image: yasker/local-path-provisioner:e862e16
-          imagePullPolicy: Always
-          command:
-          - local-path-provisioner
-          - --debug
-          - start
-          - --config
-          - /etc/config/config.json
-          volumeMounts:
-          - name: config-volume
-            mountPath: /etc/config/
+      - name: local-path-provisioner
+        image: yasker/local-path-provisioner:154a153-dirty
+        imagePullPolicy: Always
+        command:
+        - local-path-provisioner
+        - --debug
+        - start
+        - --config
+        - /etc/config/config.json
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config/
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
       volumes:
         - name: config-volume
           configMap:

@@ -30,6 +30,7 @@ var (
 type LocalPathProvisioner struct {
 	kubeClient *clientset.Clientset
 	configFile string
+	namespace  string
 }
 
 type NodePathMapData struct {
@@ -69,13 +70,14 @@ func (c *Config) getRandomPathOnNode(node string) (string, error) {
 	return path, nil
 }
 
-func NewProvisioner(kubeClient *clientset.Clientset, configFile string) (*LocalPathProvisioner, error) {
+func NewProvisioner(kubeClient *clientset.Clientset, configFile, namespace string) (*LocalPathProvisioner, error) {
 	if _, err := getConfig(configFile); err != nil {
 		return nil, errors.Wrapf(err, "invalidate config file %v", configFile)
 	}
 	return &LocalPathProvisioner{
 		kubeClient: kubeClient,
 		configFile: configFile,
+		namespace:  namespace,
 	}, nil
 }
 
@@ -265,14 +267,13 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 		},
 	}
 
-	namespace := "default"
-	pod, err := p.kubeClient.CoreV1().Pods(namespace).Create(cleanupPod)
+	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(cleanupPod)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		e := p.kubeClient.CoreV1().Pods(namespace).Delete(pod.Name, &metav1.DeleteOptions{})
+		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(pod.Name, &metav1.DeleteOptions{})
 		if e != nil {
 			logrus.Errorf("unable to delete the cleanup pod: %v", e)
 		}
@@ -280,7 +281,7 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 
 	completed := false
 	for i := 0; i < CleanupTimeoutCounts; i++ {
-		if pod, err := p.kubeClient.CoreV1().Pods(namespace).Get(pod.Name, metav1.GetOptions{}); err != nil {
+		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(pod.Name, metav1.GetOptions{}); err != nil {
 			return err
 		} else if pod.Status.Phase == v1.PodSucceeded {
 			completed = true

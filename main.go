@@ -18,11 +18,13 @@ import (
 var (
 	VERSION = "0.0.1"
 
+	FlagConfigFile         = "config"
+	FlagProvisionerName    = "provisioner-name"
+	EnvProvisionerName     = "PROVISIONER_NAME"
 	DefaultProvisionerName = "rancher.io/local-path"
-
-	FlagProvisionerName = "provisioner-name"
-	EnvProvisionerName  = "PROVISIONER_NAME"
-	FlagConfigFile      = "config"
+	FlagNamespace          = "namespace"
+	EnvNamespace           = "NAMESPACE"
+	DefaultNamespace       = "local-path-storage"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -48,15 +50,21 @@ func StartCmd() cli.Command {
 		Name: "start",
 		Flags: []cli.Flag{
 			cli.StringFlag{
+				Name:  FlagConfigFile,
+				Usage: "Required. Provisioner configuration file.",
+				Value: "",
+			},
+			cli.StringFlag{
 				Name:   FlagProvisionerName,
-				Usage:  "Optional. Specify provisioner name.",
+				Usage:  "Required. Specify Provisioner name.",
 				EnvVar: EnvProvisionerName,
 				Value:  DefaultProvisionerName,
 			},
 			cli.StringFlag{
-				Name:  FlagConfigFile,
-				Usage: "Required. Provisioner configuration file.",
-				Value: "",
+				Name:   FlagNamespace,
+				Usage:  "Required. The namespace that Provisioner is running in",
+				EnvVar: EnvNamespace,
+				Value:  DefaultNamespace,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -86,12 +94,20 @@ func startDaemon(c *cli.Context) error {
 		return errors.Wrap(err, "Cannot start Provisioner: failed to get Kubernetes server version")
 	}
 
+	configFile := c.String(FlagConfigFile)
+	if configFile == "" {
+		return fmt.Errorf("invalid empty flag %v", FlagConfigFile)
+	}
 	provisionerName := c.String(FlagProvisionerName)
 	if provisionerName == "" {
-		return fmt.Errorf("invalid empty provisioner name")
+		return fmt.Errorf("invalid empty flag %v", FlagProvisionerName)
 	}
-	configFile := c.String(FlagConfigFile)
-	provisioner, err := NewProvisioner(kubeClient, configFile)
+	namespace := c.String(FlagNamespace)
+	if namespace == "" {
+		return fmt.Errorf("invalid empty flag %v", FlagNamespace)
+	}
+
+	provisioner, err := NewProvisioner(kubeClient, configFile, namespace)
 	if err != nil {
 		return err
 	}
