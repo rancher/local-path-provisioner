@@ -69,8 +69,8 @@ $ kubectl -n local-path-storage logs -f local-path-provisioner-d744ccf98-xfcbk
 Create a `hostPath` backed Persistent Volume and a pod uses it:
 
 ```
-kubectl create -f https://github.com/yasker/local-path-provisioner/blob/master/example/pvc.yaml
-kubectl create -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/example/pvc.yaml
+kubectl create -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/example/pod.yaml
 ```
 
 You should see the PV has been created:
@@ -101,12 +101,12 @@ kubectl exec volume-test -- sh -c "echo local-path-test > /data/test"
 
 Now delete the pod using
 ```
-kubectl delete -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/example/pod.yaml
 ```
 
 After confirm that the pod is gone, recreated the pod using
 ```
-kubectl create -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/example/pod.yaml
 ```
 
 Check the volume content:
@@ -117,8 +117,8 @@ local-path-test
 
 Delete the pod and pvc
 ```
-kubectl delete -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
-kubectl delete -f https://github.com/yasker/local-path-provisioner/blob/master/example/pvc.yaml
+kubectl delete -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/example/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/example/pvc.yaml
 ```
 
 The volume content stored on the node will be automatically cleaned up. You can check the log of `local-path-provisioner-xxx` for details.
