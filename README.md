@@ -193,7 +193,7 @@ Before uninstallation, make sure the PVs created by the provisioner has already 
 To uninstall, execute:
 
 ```
-kubectl create -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl delete -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
 
 ## License
