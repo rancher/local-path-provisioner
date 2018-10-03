@@ -186,6 +186,15 @@ If the reload failed due to some reason, the provisioner will report error in th
 
 >time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
 
+## Uninstall
+
+Before uninstallation, make sure the PVs created by the provisioner has already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
+
+To uninstall, execute:
+
+```
+kubectl create -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/deploy/local-path-storage.yaml
+```
 
 ## License
 
