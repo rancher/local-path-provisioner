@@ -107,7 +107,7 @@ func startDaemon(c *cli.Context) error {
 		return fmt.Errorf("invalid empty flag %v", FlagNamespace)
 	}
 
-	provisioner, err := NewProvisioner(kubeClient, configFile, namespace)
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace)
 	if err != nil {
 		return err
 	}
