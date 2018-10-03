@@ -15,61 +15,184 @@ Dynamic provisioning the volume using host path.
     1. The capacity limit will be ignored for now.
 2. Only support `hostPath`
 
-## Installation
+## Requirement
+Minimal Kubernetes v1.11+. Recommend Kubernetes v1.12+.
 
-### Requirement
-Kubernetes v1.11+
+## Deployment
 
 ### Prepare Kubernetes cluster
 1. For Kubernetes v1.11, the feature gate `DynamicProvisioningScheduling` must be enabled on all Kubernetes components(`kube-scheduler`, `kube-controller-manager`, `kubelet`, `kube-api` and `kube-proxy`) on all Kubernetes cluster node.
+    1. For RKE, add following into the setup yaml file.
+    ```
+    services: 
+      kube-api: 
+        extra_args: 
+          feature-gates: "DynamicProvisioningScheduling=true"
+      kube-controller: 
+        extra_args: 
+          feature-gates: "DynamicProvisioningScheduling=true"
+      kubelet: 
+        extra_args: 
+          feature-gates: "DynamicProvisioningScheduling=true"
+      scheduler: 
+        extra_args: 
+          feature-gates: "DynamicProvisioningScheduling=true"
+      kubeproxy: 
+        extra_args: 
+          feature-gates: "DynamicProvisioningScheduling=true"  
+    ```
 2. For Kubernetes v1.12+, no preparation is needed.
-    1. The feature gate `DynamicProvisioningScheduling` was combined with `VolumeScheduling` feature gate and enabled by default.
+    1. The feature gate `DynamicProvisioningScheduling` was combined with `VolumeScheduling` feature gate and was enabled by default.
     
-### One-line installation
+### Installation
 
-By default, the directory `/opt/local-path-provisioner` will be used across all the nodes as the path for provisioning (a.k.a, store the persistent volume data).
+In this setup, the directory `/opt/local-path-provisioner` will be used across all the nodes as the path for provisioning (a.k.a, store the persistent volume data). The provisioner will be installed in `local-path-storage` namespace by default.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/deploy/provisioner.yaml
+kubectl apply -f https://raw.githubusercontent.com/yasker/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
 
-### Configuration
+After installation, you should see something like the following:
+```
+$ kubectl -n local-path-storage get pod
+NAME                                     READY     STATUS    RESTARTS   AGE
+local-path-provisioner-d744ccf98-xfcbk   1/1       Running   0          7m
+```
 
-You can also change the path you wanted to use for provisioning local path volumes by changing the ConfigMap `local-path-config`.
+Check and follow the provisioner log using:
+```
+$ kubectl -n local-path-storage logs -f local-path-provisioner-d744ccf98-xfcbk
+```
 
-### Test run
+## Usage
 
-Create a `hostPath` backed Persistent Volume and Pod using:
+Create a `hostPath` backed Persistent Volume and a pod uses it:
 
 ```
 kubectl create -f https://github.com/yasker/local-path-provisioner/blob/master/example/pvc.yaml
+kubectl create -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
 ```
 
-You should see the pod become running successfully:
+You should see the PV has been created:
 ```
-> kubectl get pod volume-test
+$ kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS    CLAIM                    STORAGECLASS   REASON    AGE
+pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            Delete           Bound     default/local-path-pvc   local-path               4s
 ```
 
-And you should see the log from `local-path-provisioner-xxxx` like:
+The PVC has been bound:
+```
+$ kubectl get pvc
+NAME             STATUS    VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+local-path-pvc   Bound     pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            local-path     16s
 ```
 
+And the Pod started running:
+```
+$ kubectl get pod
+NAME          READY     STATUS    RESTARTS   AGE
+volume-test   1/1       Running   0          3s
 ```
 
 Write something into the pod
 ```
-kubectl exec volume-test -- echo testdata > /data/test
+kubectl exec volume-test -- sh -c "echo local-path-test > /data/test"
 ```
-
-Take a look at your node and directory mentioned above in the provisioner log, you should see the file there.
 
 Now delete the pod using
 ```
+kubectl delete -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
+```
+
+After confirm that the pod is gone, recreated the pod using
+```
+kubectl create -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
+```
+
+Check the volume content:
+```
+$ kubectl exec volume-test cat /data/test
+local-path-test
+```
+
+Delete the pod and pvc
+```
+kubectl delete -f https://github.com/yasker/local-path-provisioner/blob/master/example/pod.yaml
 kubectl delete -f https://github.com/yasker/local-path-provisioner/blob/master/example/pvc.yaml
 ```
 
-You should see the log from provisioner like:
+The volume content stored on the node will be automatically cleaned up. You can check the log of `local-path-provisioner-xxx` for details.
+
+Now you've verified that the provisioner works as expected.
+
+## Configuration
+
+The configuration of the provisioner is stored in the a config map, e.g.:
 ```
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+data:
+  config.json: |-
+        {
+                "nodePathMap":[
+                {
+                        "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                        "paths":["/opt/local-path-provisioner"]
+                },
+                {
+                        "node":"yasker-lp-dev1",
+                        "paths":["/opt/local-path-provisioner", "/data1"]
+                },
+                {
+                        "node":"yasker-lp-dev3",
+                        "paths":[]
+                }
+                ]
+        }
 
 ```
 
-And check the node and directory mentioned above in the log, you should see the directory is gone.
+### Definition
+`nodePathMap` is the place user can customize where to store the data on each node.
+1. If one node is not listed on the `nodePathMap`, and Kubernetes wants to create volume on it, the paths specified in `DEFAULT_PATH_FOR_NON_LISTED_NODES` will be used for provisioning.
+2. If one node is listed on the `nodePathMap`, the specified paths in `paths` will be used for provisioning.
+    1. If one node is listed but with `paths` set to `[]`, the provisioner will refuse to provision on this node.
+    2. If more than one path was specified, the path would be chosen randomly when provisioning.
+
+### Rules
+The configuration must obey following rules:
+1. `config.json` must be a valid json file.
+2. A path must start with `/`, a.k.a an absolute path.
+2. Root directory(`/`) is prohibited.
+3. No duplicate paths allowed for one node.
+4. No duplicate node allowed.
+
+### Reloading
+
+The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. It will be a delay between user update the config map and the provisioner pick it up.
+
+When the provisioner detected the configuration changes, it will try to load the new configuration. Users can observe it in the log
+>time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-path-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
+
+If the reload failed due to some reason, the provisioner will report error in the log, and **continue using the last valid configuration for provisioning in the meantime**.
+>time="2018-10-03T05:19:25Z" level=error msg="failed to load the new config file: fail to load config file /etc/config/config.json: invalid character '#' looking for beginning of object key string"
+
+>time="2018-10-03T05:20:10Z" level=error msg="failed to load the new config file: config canonicalization failed: path must start with / for path opt on node yasker-lp-dev1"
+
+>time="2018-10-03T05:23:35Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate path /data1 on node yasker-lp-dev1
+
+>time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
+
+
+## License
+
+Copyright (c) 2014-2018  [Rancher Labs, Inc.](http://rancher.com/)
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+[http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
