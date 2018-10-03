@@ -80,6 +80,8 @@ NAME                                       CAPACITY   ACCESS MODES   RECLAIM POL
 pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            Delete           Bound     default/local-path-pvc   local-path               4s
 ```
 
+If you don't see the PV created, see [troubleshooting](#troubleshooting).
+
 The PVC has been bound:
 ```
 $ kubectl get pvc
@@ -185,6 +187,28 @@ If the reload failed due to some reason, the provisioner will report error in th
 >time="2018-10-03T05:23:35Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate path /data1 on node yasker-lp-dev1
 
 >time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
+
+## Troubleshooting
+
+### PV cannot be created by the provisioner
+
+#### Kubernetes v1.11 feature gate
+
+If you're running Kubernetes v1.11, make sure the feature gate `DynamicProvisioningScheduling` are **enabled on ALL the Kubernetes components on ALL the node**.
+
+The components that needs to enable the feature gate are:
+1. `kube-scheduler`
+2. `kube-controller-manager`
+3. `kubelet`
+4. `kube-api`
+5. `kube-proxy`
+
+You can check each process' log for the following line to confirm the enabling of the feature gate.
+```
+I0929 01:42:47.699142       1 flags.go:27] FLAG: --feature-gates="DynamicProvisioningScheduling=true"
+```
+
+This log line should present in all the components' log listed above.
 
 ## Uninstall
 
