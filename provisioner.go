@@ -19,6 +19,8 @@ import (
 
 const (
 	KeyNode = "kubernetes.io/hostname"
+
+	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 )
 
 var (
@@ -50,7 +52,11 @@ type Config struct {
 func (c *Config) getRandomPathOnNode(node string) (string, error) {
 	npMap := c.NodePathMap[node]
 	if npMap == nil {
-		return "", fmt.Errorf("config doesn't contain node %v", node)
+		npMap = c.NodePathMap[NodeDefaultNonListedNodes]
+		if npMap == nil {
+			return "", fmt.Errorf("config doesn't contain node %v, and no %v available", node, NodeDefaultNonListedNodes)
+		}
+		logrus.Debugf("config doesn't contain node %v, use %v instead", node, NodeDefaultNonListedNodes)
 	}
 	paths := npMap.Paths
 	if len(paths) == 0 {

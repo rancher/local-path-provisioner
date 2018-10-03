@@ -8,12 +8,12 @@ data:
         {
                 "nodePathMap":[
                 {
-                        "node":"yasker-lp-dev1",
-                        "paths":["/opt", "/data1"]
+                        "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                        "paths":["/opt"]
                 },
                 {
-                        "node":"yasker-lp-dev2",
-                        "paths":["/opt"]
+                        "node":"yasker-lp-dev1",
+                        "paths":["/opt", "/data1"]
                 },
                 {
                         "node":"yasker-lp-dev3",

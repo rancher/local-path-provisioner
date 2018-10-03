@@ -55,7 +55,7 @@ spec:
       serviceAccountName: local-path-provisioner-service-account
       containers:
         - name: local-path-provisioner
-          image: yasker/local-path-provisioner:63df7c1
+          image: yasker/local-path-provisioner:e862e16
           imagePullPolicy: Always
           command:
           - local-path-provisioner
