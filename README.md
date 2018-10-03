@@ -127,7 +127,7 @@ Now you've verified that the provisioner works as expected.
 
 ## Configuration
 
-The configuration of the provisioner is stored in the a config map, e.g.:
+The configuration of the provisioner is a json file `config.json`, stored in the a config map, e.g.:
 ```
 kind: ConfigMap
 apiVersion: v1
