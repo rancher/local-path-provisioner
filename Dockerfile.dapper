@@ -22,7 +22,7 @@ ENV GOLANG_ARCH_amd64=amd64 GOLANG_ARCH_arm=armv6l GOLANG_ARCH=GOLANG_ARCH_${ARC
 RUN wget -O - https://storage.googleapis.com/golang/go1.11.linux-${!GOLANG_ARCH}.tar.gz | tar -xzf - -C /usr/local && \
     go get github.com/rancher/trash && go get github.com/golang/lint/golint
 
-ENV DAPPER_SOURCE /go/src/github.com/yasker/local-path-provisioner
+ENV DAPPER_SOURCE /go/src/github.com/rancher/local-path-provisioner
 ENV DAPPER_OUTPUT ./bin
 ENV DAPPER_DOCKER_SOCKET true
 ENV DAPPER_ENV IMAGE REPO VERSION TAG
