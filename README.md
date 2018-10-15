@@ -56,8 +56,6 @@ NAME                                       CAPACITY   ACCESS MODES   RECLAIM POL
 pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            Delete           Bound     default/local-path-pvc   local-path               4s
 ```
 
-If you don't see the PV created, see [troubleshooting](#troubleshooting).
-
 The PVC has been bound:
 ```
 $ kubectl get pvc
