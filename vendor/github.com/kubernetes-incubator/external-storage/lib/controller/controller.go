@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -38,11 +39,10 @@ import (
 	storagebeta "k8s.io/api/storage/v1beta1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -76,7 +76,7 @@ const annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
 
 // This annotation is added to a PVC that has been triggered by scheduler to
 // be dynamically provisioned. Its value is the name of the selected node.
-const annSelectedNode = "volume.alpha.kubernetes.io/selected-node"
+const annSelectedNode = "volume.kubernetes.io/selected-node"
 
 // ProvisionController is a controller that provisions PersistentVolumes for
 // PersistentVolumeClaims.
@@ -102,15 +102,15 @@ type ProvisionController struct {
 	// * 1.6: storage classes enter GA
 	kubeVersion *utilversion.Version
 
-	claimInformer    cache.SharedInformer
-	claims           cache.Store
-	claimController  cache.Controller
-	volumeInformer   cache.SharedInformer
-	volumes          cache.Store
-	volumeController cache.Controller
-	classInformer    cache.SharedInformer
-	classes          cache.Store
-	classController  cache.Controller
+	claimInformer  cache.SharedInformer
+	claims         cache.Store
+	volumeInformer cache.SharedInformer
+	volumes        cache.Store
+	classInformer  cache.SharedInformer
+	classes        cache.Store
+
+	// To determine if the informer is internal or external
+	customClaimInformer, customVolumeInformer, customClassInformer bool
 
 	claimQueue  workqueue.RateLimitingInterface
 	volumeQueue workqueue.RateLimitingInterface
@@ -333,25 +333,27 @@ func RetryPeriod(retryPeriod time.Duration) func(*ProvisionController) error {
 }
 
 // ClaimsInformer sets the informer to use for accessing PersistentVolumeClaims.
-// Defaults to using a private (non-shared) informer.
+// Defaults to using a internal informer.
 func ClaimsInformer(informer cache.SharedInformer) func(*ProvisionController) error {
 	return func(c *ProvisionController) error {
 		if c.HasRun() {
 			return errRuntime
 		}
 		c.claimInformer = informer
+		c.customClaimInformer = true
 		return nil
 	}
 }
 
 // VolumesInformer sets the informer to use for accessing PersistentVolumes.
-// Defaults to using a private (non-shared) informer.
+// Defaults to using a internal informer.
 func VolumesInformer(informer cache.SharedInformer) func(*ProvisionController) error {
 	return func(c *ProvisionController) error {
 		if c.HasRun() {
 			return errRuntime
 		}
 		c.volumeInformer = informer
+		c.customVolumeInformer = true
 		return nil
 	}
 }
@@ -359,13 +361,14 @@ func VolumesInformer(informer cache.SharedInformer) func(*ProvisionController) e
 // ClassesInformer sets the informer to use for accessing StorageClasses.
 // The informer must use the versioned resource appropriate for the Kubernetes cluster version
 // (that is, v1.StorageClass for >= 1.6, and v1beta1.StorageClass for < 1.6).
-// Defaults to using a private (non-shared) informer.
+// Defaults to using a internal informer.
 func ClassesInformer(informer cache.SharedInformer) func(*ProvisionController) error {
 	return func(c *ProvisionController) error {
 		if c.HasRun() {
 			return errRuntime
 		}
 		c.classInformer = informer
+		c.customClassInformer = true
 		return nil
 	}
 }
@@ -477,17 +480,10 @@ func NewProvisionController(
 	controller.claimQueue = workqueue.NewNamedRateLimitingQueue(ratelimiter, "claims")
 	controller.volumeQueue = workqueue.NewNamedRateLimitingQueue(ratelimiter, "volumes")
 
+	informer := informers.NewSharedInformerFactory(client, controller.resyncPeriod)
+
 	// ----------------------
 	// PersistentVolumeClaims
-
-	claimSource := &cache.ListWatch{
-		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-			return client.CoreV1().PersistentVolumeClaims(v1.NamespaceAll).List(options)
-		},
-		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-			return client.CoreV1().PersistentVolumeClaims(v1.NamespaceAll).Watch(options)
-		},
-	}
 
 	claimHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { controller.enqueueWork(controller.claimQueue, obj) },
@@ -497,30 +493,14 @@ func NewProvisionController(
 
 	if controller.claimInformer != nil {
 		controller.claimInformer.AddEventHandlerWithResyncPeriod(claimHandler, controller.resyncPeriod)
-		controller.claims, controller.claimController =
-			controller.claimInformer.GetStore(),
-			controller.claimInformer.GetController()
 	} else {
-		controller.claims, controller.claimController =
-			cache.NewInformer(
-				claimSource,
-				&v1.PersistentVolumeClaim{},
-				controller.resyncPeriod,
-				claimHandler,
-			)
+		controller.claimInformer = informer.Core().V1().PersistentVolumeClaims().Informer()
+		controller.claimInformer.AddEventHandler(claimHandler)
 	}
+	controller.claims = controller.claimInformer.GetStore()
 
 	// -----------------
 	// PersistentVolumes
-
-	volumeSource := &cache.ListWatch{
-		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-			return client.CoreV1().PersistentVolumes().List(options)
-		},
-		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-			return client.CoreV1().PersistentVolumes().Watch(options)
-		},
-	}
 
 	volumeHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { controller.enqueueWork(controller.volumeQueue, obj) },
@@ -530,67 +510,24 @@ func NewProvisionController(
 
 	if controller.volumeInformer != nil {
 		controller.volumeInformer.AddEventHandlerWithResyncPeriod(volumeHandler, controller.resyncPeriod)
-		controller.volumes, controller.volumeController =
-			controller.volumeInformer.GetStore(),
-			controller.volumeInformer.GetController()
 	} else {
-		controller.volumes, controller.volumeController =
-			cache.NewInformer(
-				volumeSource,
-				&v1.PersistentVolume{},
-				controller.resyncPeriod,
-				volumeHandler,
-			)
+		controller.volumeInformer = informer.Core().V1().PersistentVolumes().Informer()
+		controller.volumeInformer.AddEventHandler(volumeHandler)
 	}
+	controller.volumes = controller.volumeInformer.GetStore()
 
 	// --------------
 	// StorageClasses
 
-	var versionedClassType runtime.Object
-	var classSource cache.ListerWatcher
-	if controller.kubeVersion.AtLeast(utilversion.MustParseSemantic("v1.6.0")) {
-		versionedClassType = &storage.StorageClass{}
-		classSource = &cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return client.StorageV1().StorageClasses().List(options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return client.StorageV1().StorageClasses().Watch(options)
-			},
-		}
-	} else {
-		versionedClassType = &storagebeta.StorageClass{}
-		classSource = &cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return client.StorageV1beta1().StorageClasses().List(options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return client.StorageV1beta1().StorageClasses().Watch(options)
-			},
+	// no resource event handler needed for StorageClasses
+	if controller.classInformer == nil {
+		if controller.kubeVersion.AtLeast(utilversion.MustParseSemantic("v1.6.0")) {
+			controller.classInformer = informer.Storage().V1().StorageClasses().Informer()
+		} else {
+			controller.classInformer = informer.Storage().V1beta1().StorageClasses().Informer()
 		}
 	}
-
-	classHandler := cache.ResourceEventHandlerFuncs{
-		// We don't need an actual event handler for StorageClasses,
-		// but we must pass a non-nil one to cache.NewInformer()
-		AddFunc:    nil,
-		UpdateFunc: nil,
-		DeleteFunc: nil,
-	}
-
-	if controller.classInformer != nil {
-		// no resource event handler needed for StorageClasses
-		controller.classes, controller.classController =
-			controller.classInformer.GetStore(),
-			controller.classInformer.GetController()
-	} else {
-		controller.classes, controller.classController = cache.NewInformer(
-			classSource,
-			versionedClassType,
-			controller.resyncPeriod,
-			classHandler,
-		)
-	}
+	controller.classes = controller.classInformer.GetStore()
 
 	return controller
 }
@@ -625,9 +562,13 @@ func (ctrl *ProvisionController) forgetWork(queue workqueue.RateLimitingInterfac
 }
 
 // Run starts all of this controller's control loops
-func (ctrl *ProvisionController) Run(stopCh <-chan struct{}) {
+func (ctrl *ProvisionController) Run(_ <-chan struct{}) {
+	// TODO: arg is as of 1.12 unused. Nothing can ever be cancelled. Should
+	// accept a context instead and use it instead of context.TODO(), but would
+	// break API. Not urgent: realistically, users are simply passing in
+	// wait.NeverStop() anyway.
 
-	run := func(stopCh <-chan struct{}) {
+	run := func(ctx context.Context) {
 		glog.Infof("Starting provisioner controller %s!", ctrl.component)
 		defer utilruntime.HandleCrash()
 		defer ctrl.claimQueue.ShutDown()
@@ -656,34 +597,33 @@ func (ctrl *ProvisionController) Run(stopCh <-chan struct{}) {
 			}, 5*time.Second)
 		}
 
-		// If a SharedInformer has been passed in, this controller should not
-		// call Run again
-		if ctrl.claimInformer == nil {
-			go ctrl.claimController.Run(stopCh)
+		// If a external SharedInformer has been passed in, this controller
+		// should not call Run again
+		if !ctrl.customClaimInformer {
+			go ctrl.claimInformer.Run(ctx.Done())
 		}
-		if ctrl.volumeInformer == nil {
-			go ctrl.volumeController.Run(stopCh)
+		if !ctrl.customVolumeInformer {
+			go ctrl.volumeInformer.Run(ctx.Done())
 		}
-		if ctrl.classInformer == nil {
-			go ctrl.classController.Run(stopCh)
+		if !ctrl.customClassInformer {
+			go ctrl.classInformer.Run(ctx.Done())
 		}
 
-		if !cache.WaitForCacheSync(stopCh, ctrl.claimController.HasSynced, ctrl.volumeController.HasSynced, ctrl.classController.HasSynced) {
+		if !cache.WaitForCacheSync(ctx.Done(), ctrl.claimInformer.HasSynced, ctrl.volumeInformer.HasSynced, ctrl.classInformer.HasSynced) {
 			return
 		}
 
 		for i := 0; i < ctrl.threadiness; i++ {
-			go wait.Until(ctrl.runClaimWorker, time.Second, stopCh)
-			go wait.Until(ctrl.runVolumeWorker, time.Second, stopCh)
+			go wait.Until(ctrl.runClaimWorker, time.Second, context.TODO().Done())
+			go wait.Until(ctrl.runVolumeWorker, time.Second, context.TODO().Done())
 		}
 
 		glog.Infof("Started provisioner controller %s!", ctrl.component)
 
-		<-stopCh
+		select {}
 	}
 
 	if ctrl.leaderElection {
-		// TODO: passed in stopCh is ignored.
 		rl, err := resourcelock.New("endpoints",
 			ctrl.leaderElectionNamespace,
 			strings.Replace(ctrl.provisionerName, "/", "-", -1),
@@ -696,7 +636,7 @@ func (ctrl *ProvisionController) Run(stopCh <-chan struct{}) {
 			glog.Fatalf("Error creating lock: %v", err)
 		}
 
-		leaderelection.RunOrDie(leaderelection.LeaderElectionConfig{
+		leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
 			Lock:          rl,
 			LeaseDuration: ctrl.leaseDuration,
 			RenewDeadline: ctrl.renewDeadline,
@@ -710,7 +650,7 @@ func (ctrl *ProvisionController) Run(stopCh <-chan struct{}) {
 		})
 		panic("unreachable")
 	} else {
-		run(stopCh)
+		run(context.TODO())
 	}
 }
 
@@ -984,7 +924,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 	// Most code here is identical to that found in controller.go of kube's PV controller...
 	claimClass := helper.GetPersistentVolumeClaimClass(claim)
 	operation := fmt.Sprintf("provision %q class %q", claimToClaimKey(claim), claimClass)
-	glog.Infof(logOperation(operation, "started"))
+	glog.Info(logOperation(operation, "started"))
 
 	//  A previous doProvisionClaim may just have finished while we were waiting for
 	//  the locks. Check that PV (with deterministic name) hasn't been provisioned
@@ -993,7 +933,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 	volume, err := ctrl.client.CoreV1().PersistentVolumes().Get(pvName, metav1.GetOptions{})
 	if err == nil && volume != nil {
 		// Volume has been already provisioned, nothing to do.
-		glog.Infof(logOperation(operation, "persistentvolume %q already exists, skipping", pvName))
+		glog.Info(logOperation(operation, "persistentvolume %q already exists, skipping", pvName))
 		return nil
 	}
 
@@ -1001,27 +941,27 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 	// provisioned)
 	claimRef, err := ref.GetReference(scheme.Scheme, claim)
 	if err != nil {
-		glog.Errorf(logOperation(operation, "unexpected error getting claim reference: %v", err))
+		glog.Error(logOperation(operation, "unexpected error getting claim reference: %v", err))
 		return nil
 	}
 
 	provisioner, parameters, err := ctrl.getStorageClassFields(claimClass)
 	if err != nil {
-		glog.Errorf(logOperation(operation, "error getting claim's StorageClass's fields: %v", err))
+		glog.Error(logOperation(operation, "error getting claim's StorageClass's fields: %v", err))
 		return nil
 	}
 	if provisioner != ctrl.provisionerName {
 		// class.Provisioner has either changed since shouldProvision() or
 		// annDynamicallyProvisioned contains different provisioner than
 		// class.Provisioner.
-		glog.Errorf(logOperation(operation, "unknown provisioner %q requested in claim's StorageClass", provisioner))
+		glog.Error(logOperation(operation, "unknown provisioner %q requested in claim's StorageClass", provisioner))
 		return nil
 	}
 
 	// Check if this provisioner can provision this claim.
 	if err = ctrl.canProvision(claim); err != nil {
 		ctrl.eventRecorder.Event(claim, v1.EventTypeWarning, "ProvisioningFailed", err.Error())
-		glog.Errorf(logOperation(operation, "failed to provision volume: %v", err))
+		glog.Error(logOperation(operation, "failed to provision volume: %v", err))
 		return nil
 	}
 
@@ -1076,7 +1016,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 	if err != nil {
 		if ierr, ok := err.(*IgnoredError); ok {
 			// Provision ignored, do nothing and hope another provisioner will provision it.
-			glog.Infof(logOperation(operation, "volume provision ignored: %v", ierr))
+			glog.Info(logOperation(operation, "volume provision ignored: %v", ierr))
 			return nil
 		}
 		err = fmt.Errorf("failed to provision volume with StorageClass %q: %v", claimClass, err)
@@ -1084,7 +1024,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 		return err
 	}
 
-	glog.Infof(logOperation(operation, "volume %q provisioned", volume.Name))
+	glog.Info(logOperation(operation, "volume %q provisioned", volume.Name))
 
 	// Set ClaimRef and the PV controller will bind and set annBoundByController for us
 	volume.Spec.ClaimRef = claimRef
@@ -1098,19 +1038,19 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 
 	// Try to create the PV object several times
 	for i := 0; i < ctrl.createProvisionedPVRetryCount; i++ {
-		glog.Infof(logOperation(operation, "trying to save persistentvvolume %q", volume.Name))
+		glog.Info(logOperation(operation, "trying to save persistentvolume %q", volume.Name))
 		if _, err = ctrl.client.CoreV1().PersistentVolumes().Create(volume); err == nil || apierrs.IsAlreadyExists(err) {
 			// Save succeeded.
 			if err != nil {
-				glog.Infof(logOperation(operation, "persistentvolume %q already exists, reusing", volume.Name))
+				glog.Info(logOperation(operation, "persistentvolume %q already exists, reusing", volume.Name))
 				err = nil
 			} else {
-				glog.Infof(logOperation(operation, "persistentvolume %q saved", volume.Name))
+				glog.Info(logOperation(operation, "persistentvolume %q saved", volume.Name))
 			}
 			break
 		}
 		// Save failed, try again after a while.
-		glog.Infof(logOperation(operation, "failed to save persistentvolume %q: %v", volume.Name, err))
+		glog.Info(logOperation(operation, "failed to save persistentvolume %q: %v", volume.Name, err))
 		time.Sleep(ctrl.createProvisionedPVInterval)
 	}
 
@@ -1126,11 +1066,11 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 		for i := 0; i < ctrl.createProvisionedPVRetryCount; i++ {
 			if err = ctrl.provisioner.Delete(volume); err == nil {
 				// Delete succeeded
-				glog.Infof(logOperation(operation, "cleaning volume %q succeeded", volume.Name))
+				glog.Info(logOperation(operation, "cleaning volume %q succeeded", volume.Name))
 				break
 			}
 			// Delete failed, try again after a while.
-			glog.Infof(logOperation(operation, "failed to clean volume %q: %v", volume.Name, err))
+			glog.Info(logOperation(operation, "failed to clean volume %q: %v", volume.Name, err))
 			time.Sleep(ctrl.createProvisionedPVInterval)
 		}
 
@@ -1146,7 +1086,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 		ctrl.eventRecorder.Event(claim, v1.EventTypeNormal, "ProvisioningSucceeded", msg)
 	}
 
-	glog.Infof(logOperation(operation, "succeeded"))
+	glog.Info(logOperation(operation, "succeeded"))
 	return nil
 }
 
@@ -1155,7 +1095,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 // (requeue the volume) or not
 func (ctrl *ProvisionController) deleteVolumeOperation(volume *v1.PersistentVolume) error {
 	operation := fmt.Sprintf("delete %q", volume.Name)
-	glog.Infof(logOperation(operation, "started"))
+	glog.Info(logOperation(operation, "started"))
 
 	// This method may have been waiting for a volume lock for some time.
 	// Our check does not have to be as sophisticated as PV controller's, we can
@@ -1166,7 +1106,7 @@ func (ctrl *ProvisionController) deleteVolumeOperation(volume *v1.PersistentVolu
 		return nil
 	}
 	if !ctrl.shouldDelete(newVolume) {
-		glog.Infof(logOperation(operation, "persistentvolume no longer needs deletion, skipping"))
+		glog.Info(logOperation(operation, "persistentvolume no longer needs deletion, skipping"))
 		return nil
 	}
 
@@ -1174,28 +1114,28 @@ func (ctrl *ProvisionController) deleteVolumeOperation(volume *v1.PersistentVolu
 	if err != nil {
 		if ierr, ok := err.(*IgnoredError); ok {
 			// Delete ignored, do nothing and hope another provisioner will delete it.
-			glog.Infof(logOperation(operation, "volume deletion ignored: %v", ierr))
+			glog.Info(logOperation(operation, "volume deletion ignored: %v", ierr))
 			return nil
 		}
 		// Delete failed, emit an event.
-		glog.Errorf(logOperation(operation, "volume deletion failed: %v", err))
+		glog.Error(logOperation(operation, "volume deletion failed: %v", err))
 		ctrl.eventRecorder.Event(volume, v1.EventTypeWarning, "VolumeFailedDelete", err.Error())
 		return err
 	}
 
-	glog.Infof(logOperation(operation, "volume deleted"))
+	glog.Info(logOperation(operation, "volume deleted"))
 
 	// Delete the volume
 	if err = ctrl.client.CoreV1().PersistentVolumes().Delete(volume.Name, nil); err != nil {
 		// Oops, could not delete the volume and therefore the controller will
 		// try to delete the volume again on next update.
-		glog.Infof(logOperation(operation, "failed to delete persistentvolume: %v", err))
+		glog.Info(logOperation(operation, "failed to delete persistentvolume: %v", err))
 		return err
 	}
 
-	glog.Infof(logOperation(operation, "persistentvolume deleted"))
+	glog.Info(logOperation(operation, "persistentvolume deleted"))
 
-	glog.Infof(logOperation(operation, "succeeded"))
+	glog.Info(logOperation(operation, "succeeded"))
 	return nil
 }
 

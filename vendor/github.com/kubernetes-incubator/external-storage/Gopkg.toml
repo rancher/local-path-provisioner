@@ -39,10 +39,6 @@ ignored = [
   version = "1.1.1"
 
 [[constraint]]
-  name = "github.com/docker/docker"
-  version = "1.13.1"
-
-[[constraint]]
   branch = "master"
   name = "github.com/golang/glog"
 
@@ -68,23 +64,38 @@ ignored = [
 
 [[constraint]]
   name = "k8s.io/api"
-  version = "kubernetes-1.11.0"
+  version = "kubernetes-1.12.0"
 
 [[constraint]]
   name = "k8s.io/apiextensions-apiserver"
-  version = "kubernetes-1.11.0"
+  version = "kubernetes-1.12.0"
 
 [[constraint]]
   name = "k8s.io/apimachinery"
-  version = "kubernetes-1.11.0"
+  version = "kubernetes-1.12.0"
 
 [[constraint]]
   name = "k8s.io/client-go"
-  version = "8.0.0"
+  version = "kubernetes-1.12.0"
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  version = "1.11.0"
+  version = "v1.12.0"
+
+# https://github.com/kubernetes/kubernetes/blob/v1.12.0-beta.1/Godeps/Godeps.json#L3213
+[[override]]
+  name = "golang.org/x/exp"
+  revision = "292a51b8d262487dab23a588950e8052d63d9113"
+
+# https://github.com/kubernetes/kubernetes/blob/v1.12.0-beta.1/Godeps/Godeps.json#L1307
+[[override]]
+  name = "github.com/docker/distribution"
+  revision = "edc3ab29cdff8694dd6feb85cfeb4b5f1b38ed9c"
+
+# https://github.com/golang/dep/issues/1799
+[[override]]
+  name = "gopkg.in/fsnotify.v1"
+  source = "https://github.com/fsnotify/fsnotify.git"
 
 [prune]
   go-tests = true
