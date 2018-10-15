@@ -16,34 +16,10 @@ Dynamic provisioning the volume using host path.
 2. Only support `hostPath`
 
 ## Requirement
-Minimal Kubernetes v1.11+. Recommend Kubernetes v1.12+.
+Kubernetes v1.12+.
 
 ## Deployment
 
-### Prepare Kubernetes cluster
-1. For Kubernetes v1.11, the feature gate `DynamicProvisioningScheduling` must be enabled on all Kubernetes components(`kube-scheduler`, `kube-controller-manager`, `kubelet`, `kube-api` and `kube-proxy`) on all Kubernetes cluster node.
-    1. For RKE, add following into the setup yaml file.
-    ```
-    services: 
-      kube-api: 
-        extra_args: 
-          feature-gates: "DynamicProvisioningScheduling=true"
-      kube-controller: 
-        extra_args: 
-          feature-gates: "DynamicProvisioningScheduling=true"
-      kubelet: 
-        extra_args: 
-          feature-gates: "DynamicProvisioningScheduling=true"
-      scheduler: 
-        extra_args: 
-          feature-gates: "DynamicProvisioningScheduling=true"
-      kubeproxy: 
-        extra_args: 
-          feature-gates: "DynamicProvisioningScheduling=true"  
-    ```
-2. For Kubernetes v1.12+, no preparation is needed.
-    1. The feature gate `DynamicProvisioningScheduling` was combined with `VolumeScheduling` feature gate and was enabled by default.
-    
 ### Installation
 
 In this setup, the directory `/opt/local-path-provisioner` will be used across all the nodes as the path for provisioning (a.k.a, store the persistent volume data). The provisioner will be installed in `local-path-storage` namespace by default.
