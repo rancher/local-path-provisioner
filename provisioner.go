@@ -39,9 +39,10 @@ var (
 )
 
 type LocalPathProvisioner struct {
-	stopCh     chan struct{}
-	kubeClient *clientset.Clientset
-	namespace  string
+	stopCh      chan struct{}
+	kubeClient  *clientset.Clientset
+	namespace   string
+	helperImage string
 
 	config      *Config
 	configData  *ConfigData
@@ -66,12 +67,13 @@ type Config struct {
 	NodePathMap map[string]*NodePathMap
 }
 
-func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace string) (*LocalPathProvisioner, error) {
+func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace, helperImage string) (*LocalPathProvisioner, error) {
 	p := &LocalPathProvisioner{
 		stopCh: stopCh,
 
-		kubeClient: kubeClient,
-		namespace:  namespace,
+		kubeClient:  kubeClient,
+		namespace:   namespace,
+		helperImage: helperImage,
 
 		// config will be updated shortly by p.refreshConfig()
 		config:      nil,
@@ -324,7 +326,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			Containers: []v1.Container{
 				{
 					Name:    "local-path-" + string(action),
-					Image:   "busybox",
+					Image:   p.helperImage,
 					Command: append(cmdsForPath, filepath.Join("/data/", volumeDir)),
 					VolumeMounts: []v1.VolumeMount{
 						{
