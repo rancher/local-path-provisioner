@@ -25,6 +25,9 @@ var (
 	FlagNamespace          = "namespace"
 	EnvNamespace           = "NAMESPACE"
 	DefaultNamespace       = "local-path-storage"
+	FlagHelperImage        = "helper-image"
+	EnvHelperImage         = "HELPER_IMAGE"
+	DefaultHelperImage     = "busybox"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -66,6 +69,12 @@ func StartCmd() cli.Command {
 				EnvVar: EnvNamespace,
 				Value:  DefaultNamespace,
 			},
+			cli.StringFlag{
+				Name:   FlagHelperImage,
+				Usage:  "Required. The helper image used for create/delete directories on the host",
+				EnvVar: EnvHelperImage,
+				Value:  DefaultHelperImage,
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := startDaemon(c); err != nil {
@@ -106,8 +115,12 @@ func startDaemon(c *cli.Context) error {
 	if namespace == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagNamespace)
 	}
+	helperImage := c.String(FlagHelperImage)
+	if helperImage == "" {
+		return fmt.Errorf("invalid empty flag %v", FlagHelperImage)
+	}
 
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace)
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage)
 	if err != nil {
 		return err
 	}
