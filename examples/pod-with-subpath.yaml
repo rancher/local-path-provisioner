@@ -10,19 +10,21 @@ spec:
     imagePullPolicy: IfNotPresent
     volumeMounts:
     - name: volv
-      mountPath: /data
+      mountPath: /nginx
+      subPath: nginx
     ports:
     - containerPort: 80
+  - name: volume-test-2
+    image: busybox
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    - "1000000"
+    volumeMounts:
+    - name: volv
+      mountPath: /busybox
+      subPath: busybox
   volumes:
   - name: volv
     persistentVolumeClaim:
       claimName: local-path-pvc
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: kubernetes.io/hostname
-            operator: In
-            values:
-            - yasker-lp-dev1
