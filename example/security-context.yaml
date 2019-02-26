@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: local-path-test
+  labels:
+    app.kubernetes.io/name: local-path-test
+spec:
+  containers:
+    - name: test
+      image: busybox
+      command:
+        - /config/test.sh
+      volumeMounts:
+        - name: test
+          mountPath: /test
+        - name: config
+          mountPath: /config
+  restartPolicy: Never
+  securityContext:
+    fsGroup: 1000
+    runAsNonRoot: true
+    runAsUser: 1000
+  terminationGracePeriodSeconds: 0
+  volumes:
+    - name: test
+      persistentVolumeClaim:
+        claimName: local-path-test
+    - name: config
+      configMap:
+        name: local-path-test
+        defaultMode: 0555
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: local-path-test
+  labels:
+    app.kubernetes.io/name: local-path-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: "1Gi"
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-path-test
+  labels:
+    app.kubernetes.io/name: local-path-test
+data:
+  test.sh: |
+    #!/bin/sh
+    ls -al /test && \
+    echo 'Hello from local-path-test' && \
+    cp /config/text.txt /test/test.txt && \
+    touch /test/foo && \
+    ls -al /test
+  text.txt: |
+    some test content
