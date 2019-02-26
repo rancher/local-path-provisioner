@@ -19,6 +19,13 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
+type ActionType string
+
+const (
+	ActionTypeCreate = "create"
+	ActionTypeDelete = "delete"
+)
+
 const (
 	KeyNode = "kubernetes.io/hostname"
 
@@ -26,7 +33,7 @@ const (
 )
 
 var (
-	CleanupTimeoutCounts = 120
+	CmdTimeoutCounts = 120
 
 	ConfigFileCheckInterval = 5 * time.Second
 )
@@ -173,11 +180,19 @@ func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.P
 	}
 	name := opts.PVName
 	path := filepath.Join(basePath, name)
+	logrus.Infof("Creating volume %v at %v:%v", name, node.Name, path)
 
-	logrus.Infof("Created volume %v at %v:%v", name, node.Name, path)
+	createCmdsForPath := []string{
+		"mkdir",
+		"-m", "0770",
+		"-p",
+	}
+	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name); err != nil {
+		return nil, err
+	}
+
 	fs := v1.PersistentVolumeFilesystem
 	hostPathType := v1.HostPathDirectoryOrCreate
-
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -225,13 +240,15 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 		return err
 	}
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
-		if err := p.cleanupVolume(pv.Name, path, node); err != nil {
+		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
+		cleanupCmdsForPath := []string{"rm", "-rf"}
+		if err := p.createHelperPod(ActionTypeDelete, cleanupCmdsForPath, pv.Name, path, node); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
 		return nil
 	}
-	logrus.Infof("retained volume %v", pv.Name)
+	logrus.Infof("Retained volume %v", pv.Name)
 	return nil
 }
 
@@ -276,9 +293,9 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 	return path, node, nil
 }
 
-func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error) {
+func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []string, name, path, node string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to cleanup volume %v", name)
+		err = errors.Wrapf(err, "failed to %v volume %v", action, name)
 	}()
 	if name == "" || path == "" || node == "" {
 		return fmt.Errorf("invalid empty name or path or node")
@@ -293,35 +310,34 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 	volumeDir = strings.TrimSuffix(volumeDir, "/")
 	if parentDir == "" || volumeDir == "" {
 		// it covers the `/` case
-		return fmt.Errorf("invalid path %v for removal: cannot find parent dir or volume dir", path)
+		return fmt.Errorf("invalid path %v for %v: cannot find parent dir or volume dir", action, path)
 	}
 
 	hostPathType := v1.HostPathDirectoryOrCreate
-	cleanupPod := &v1.Pod{
+	helperPod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "cleanup-" + name,
+			Name: string(action) + "-" + name,
 		},
 		Spec: v1.PodSpec{
 			RestartPolicy: v1.RestartPolicyNever,
 			NodeName:      node,
 			Containers: []v1.Container{
 				{
-					Name:    "local-path-cleanup",
+					Name:    "local-path-" + string(action),
 					Image:   "busybox",
-					Command: []string{"rm"},
-					Args:    []string{"-rf", filepath.Join("/data-to-cleanup/", volumeDir)},
+					Command: append(cmdsForPath, filepath.Join("/data/", volumeDir)),
 					VolumeMounts: []v1.VolumeMount{
 						{
-							Name:      "data-to-cleanup",
+							Name:      "data",
 							ReadOnly:  false,
-							MountPath: "/data-to-cleanup/",
+							MountPath: "/data/",
 						},
 					},
 				},
 			},
 			Volumes: []v1.Volume{
 				{
-					Name: "data-to-cleanup",
+					Name: "data",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: parentDir,
@@ -333,7 +349,7 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 		},
 	}
 
-	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(cleanupPod)
+	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(helperPod)
 	if err != nil {
 		return err
 	}
@@ -341,12 +357,12 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 	defer func() {
 		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(pod.Name, &metav1.DeleteOptions{})
 		if e != nil {
-			logrus.Errorf("unable to delete the cleanup pod: %v", e)
+			logrus.Errorf("unable to delete the helper pod: %v", e)
 		}
 	}()
 
 	completed := false
-	for i := 0; i < CleanupTimeoutCounts; i++ {
+	for i := 0; i < CmdTimeoutCounts; i++ {
 		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(pod.Name, metav1.GetOptions{}); err != nil {
 			return err
 		} else if pod.Status.Phase == v1.PodSucceeded {
@@ -356,10 +372,10 @@ func (p *LocalPathProvisioner) cleanupVolume(name, path, node string) (err error
 		time.Sleep(1 * time.Second)
 	}
 	if !completed {
-		return fmt.Errorf("cleanup process timeout after %v seconds", CleanupTimeoutCounts)
+		return fmt.Errorf("create process timeout after %v seconds", CmdTimeoutCounts)
 	}
 
-	logrus.Infof("Volume %v has been cleaned up from %v:%v", name, node, path)
+	logrus.Infof("Volume %v has been %vd on %v:%v", name, action, node, path)
 	return nil
 }
 
