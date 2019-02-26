@@ -24,25 +24,11 @@ spec:
   volumes:
     - name: test
       persistentVolumeClaim:
-        claimName: local-path-test
+        claimName: local-path-pvc
     - name: config
       configMap:
         name: local-path-test
         defaultMode: 0555
----
-kind: PersistentVolumeClaim
-apiVersion: v1
-metadata:
-  name: local-path-test
-  labels:
-    app.kubernetes.io/name: local-path-test
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: "1Gi"
-  storageClassName: local-path
 ---
 apiVersion: v1
 kind: ConfigMap
