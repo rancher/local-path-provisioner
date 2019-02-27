@@ -186,7 +186,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.P
 
 	createCmdsForPath := []string{
 		"mkdir",
-		"-m", "0770",
+		"-m", "0777",
 		"-p",
 	}
 	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name); err != nil {
