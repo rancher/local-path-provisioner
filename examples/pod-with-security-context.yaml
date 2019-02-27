@@ -7,7 +7,9 @@ metadata:
 spec:
   containers:
     - name: test
-      image: busybox
+      # Jenkins image used for illustration purposes because it has a user
+      # with uid=1000 and gid=1000 that matches the specified security context
+      image: jenkins/jenkins
       command:
         - /config/test.sh
       volumeMounts:
@@ -39,6 +41,7 @@ metadata:
 data:
   test.sh: |
     #!/bin/sh
+    id
     ls -al /test && \
     echo 'Hello from local-path-test' && \
     cp /config/text.txt /test/test.txt && \
