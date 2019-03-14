@@ -23,7 +23,7 @@ var (
 	EnvProvisionerName     = "PROVISIONER_NAME"
 	DefaultProvisionerName = "rancher.io/local-path"
 	FlagNamespace          = "namespace"
-	EnvNamespace           = "NAMESPACE"
+	EnvNamespace           = "POD_NAMESPACE"
 	DefaultNamespace       = "local-path-storage"
 	FlagHelperImage        = "helper-image"
 	EnvHelperImage         = "HELPER_IMAGE"
