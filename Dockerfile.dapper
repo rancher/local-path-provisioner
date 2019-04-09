@@ -19,8 +19,8 @@ RUN wget -O - ${!DOCKER_URL} > /usr/bin/docker && chmod +x /usr/bin/docker
 ENV GOLANG_ARCH_amd64=amd64 GOLANG_ARCH_arm=armv6l GOLANG_ARCH=GOLANG_ARCH_${ARCH} \
     GOPATH=/go PATH=/go/bin:/usr/local/go/bin:${PATH} SHELL=/bin/bash
 
-RUN wget -O - https://storage.googleapis.com/golang/go1.11.linux-${!GOLANG_ARCH}.tar.gz | tar -xzf - -C /usr/local && \
-    go get github.com/rancher/trash && go get github.com/golang/lint/golint
+RUN wget -O - https://storage.googleapis.com/golang/go1.12.linux-${!GOLANG_ARCH}.tar.gz | tar -xzf - -C /usr/local
+RUN go get github.com/rancher/trash && go get golang.org/x/lint/golint
 
 ENV DAPPER_SOURCE /go/src/github.com/rancher/local-path-provisioner
 ENV DAPPER_OUTPUT ./bin

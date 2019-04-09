@@ -5,5 +5,5 @@ cd $(dirname $0)/..
 VERSION=${VERSION:-$(./scripts/version)}
 
 mkdir -p bin
-[ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s"
+[ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s -w"
 CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/local-path-provisioner
