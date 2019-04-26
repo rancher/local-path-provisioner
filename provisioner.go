@@ -325,7 +325,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			NodeName:      node,
 			Tolerations: []v1.Toleration{
 				{
-					Operator:v1.TolerationOpExists,
+					Operator: v1.TolerationOpExists,
 				},
 			},
 			Containers: []v1.Container{
