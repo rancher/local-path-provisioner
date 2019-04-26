@@ -323,6 +323,11 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 		Spec: v1.PodSpec{
 			RestartPolicy: v1.RestartPolicyNever,
 			NodeName:      node,
+			Tolerations: []v1.Toleration{
+				{
+					Operator:v1.TolerationOpExists,
+				},
+			},
 			Containers: []v1.Container{
 				{
 					Name:    "local-path-" + string(action),
