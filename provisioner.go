@@ -35,7 +35,7 @@ const (
 var (
 	CmdTimeoutCounts = 120
 
-	ConfigFileCheckInterval = 5 * time.Second
+	ConfigFileCheckInterval = 30 * time.Second
 )
 
 type LocalPathProvisioner struct {
