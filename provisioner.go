@@ -340,6 +340,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 							MountPath: "/data/",
 						},
 					},
+					ImagePullPolicy: v1.PullIfNotPresent,
 				},
 			},
 			Volumes: []v1.Volume{
