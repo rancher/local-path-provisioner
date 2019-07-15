@@ -6,7 +6,7 @@ version: 0.0.9
 keywords:
   - storage
   - hostpath
-kubeVersion: ">=1.12.0"
+kubeVersion: ">=1.12.0-r0"
 home: https://github.com/rancher/local-path-provisioner
 sources:
   - https://github.com/rancher/local-path-provisioner.git
