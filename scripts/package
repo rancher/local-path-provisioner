@@ -3,24 +3,5 @@ set -e
 
 cd $(dirname $0)/..
 
-ARCH=${ARCH:-amd64}
-SUFFIX=""
-[ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
-
-export VERSION=${VERSION:-$(./scripts/version)}
-
-TAG=${TAG:-${VERSION}${SUFFIX}}
-REPO=${REPO:-rancher}
-IMAGE=${IMAGE:-${REPO}/local-path-provisioner:${TAG}}
-
-if [ ! -e ./bin/local-path-provisioner ]; then
-    ./scripts/build
-fi
-
-cp -a ./bin ./package/
-trap 'rm -rf ./package/bin' exit
-docker build -t ${IMAGE} ./package
-
-echo Built ${IMAGE}
-
-echo ${IMAGE} > ./bin/latest_image
+mkdir -p dist/artifacts
+cp -r bin/local-path-provisioner* dist/artifacts

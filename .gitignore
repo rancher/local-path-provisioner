@@ -14,3 +14,7 @@
 *dapper*
 !Dockerfile.dapper
 bin/
+
+# generated files
+Dockerfile.gen
+push.sh

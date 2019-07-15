@@ -172,6 +172,28 @@ To uninstall, execute:
 kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
 
+## Building from source
+
+To build binaries for all supported architectures
+```
+$ CROSS=1 make
+```
+The compiled binaries are written to `./bin` with filenames like `./bin/local-path-provisioner-linux-armv6`.
+
+You will need a locally installed copy of the `manifest-tool`
+https://github.com/estesp/manifest-tool, in order to push the
+resulting docker images.
+
+To process the compiled binaries into per-arch and assemble the final multi-arch image, run:
+```
+$ make multi-arch-images
+```
+
+At the end of the `make` output are two inline files, `manifest.yaml`
+and `push.sh`.  Copy each of them from the stderr/stdout to their
+respective filenames, and then run `source push.sh` to push the
+individual arch images and create the final multi-arch image.
+
 ## License
 
 Copyright (c) 2014-2018  [Rancher Labs, Inc.](http://rancher.com/)

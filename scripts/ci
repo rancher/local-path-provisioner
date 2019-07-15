@@ -7,8 +7,3 @@ cd $(dirname $0)
 ./validate
 ./test -cover
 ./package
-
-image=`cat ../bin/latest_image`
-
-echo
-echo Longhorn Manager image: ${image}

@@ -1,0 +1,81 @@
+#!/bin/bash
+set -ex
+
+IMAGES=
+REPO=${REPO:-rancher}
+
+cd $(dirname $0)/..
+
+. ./scripts/version
+VERSION="${VER}"  # apparently, from rancher repo to repo, this script can't pick a common output var
+
+# create an ephemeral push script
+echo '#!/bin/bash' >push.sh
+chmod +x push.sh
+
+# create an ephemeral manifest file
+echo image: ${REPO}/local-path-provisioner:${VERSION} > manifest.yaml
+echo manifests: >> manifest.yaml
+
+while read HASH OS VARIANT ARCH; do
+    BIN_ARCH=${ARCH}
+    case ${OS}-${BIN_ARCH} in
+        Darwin-x86_64)
+            ;;
+        linux-arm)
+            [[ ${VARIANT} == v6 ]] && BIN_ARCH=armv6
+            [[ ${VARIANT} == v7 ]] && BIN_ARCH=armv7
+            ;;
+        linux-amd64)
+            ;;
+        linux-arm64)
+            VARIANT=null
+            ;;
+        linux-386|linux-ppc64le|linux-s390x)
+            continue ;;  # skips these ARCH.  Are these platforms supported yet?
+        *)
+            echo ARCH $BIN_ARCH not found.  This is a problem.
+            exit 1
+            ;;
+    esac
+
+    cat > Dockerfile.gen << EOF
+FROM alpine@${HASH}
+COPY bin/local-path-provisioner-${OS}-${BIN_ARCH} /usr/local/bin/local-path-provisioner
+EOF
+    docker build -f Dockerfile.gen -t ${REPO}/local-path-provisioner:${VERSION}-${BIN_ARCH} .
+
+    # add to list of images to push
+    echo docker push ${REPO}/local-path-provisioner:${VERSION}-${BIN_ARCH} >> push.sh
+
+    # handle lack of useful VARIANT template handler when VARIANT is null (jq emits 'null' for us),
+    # cf. https://github.com/estesp/manifest-tool/pull/72
+    case "${VARIANT}" in
+        null)
+            echo "- image: ${REPO}/local-path-provisioner:${VERSION}-${BIN_ARCH}"
+            echo "  platform:"
+            echo "    architecture: ${ARCH}"
+            echo "    os: ${OS}"
+            ;;
+        *)
+            echo "- image: ${REPO}/local-path-provisioner:${VERSION}-${BIN_ARCH}"
+            echo "  platform:"
+            echo "    architecture: ${ARCH}"
+            echo "    variant: ${VARIANT}"
+            echo "    os: ${OS}"
+            ;;
+    esac >> manifest.yaml
+
+done <<< $(DOCKER_CLI_EXPERIMENTAL=enabled docker manifest inspect alpine:3.9 | jq -r '.manifests[] | "\(.digest) \(.platform.os) \(.platform.variant) \(.platform.architecture)"')
+
+echo '#######' manifest.yaml
+cat ./manifest.yaml
+echo '#######' manifest.yaml
+
+echo manifest-tool push from-spec manifest.yaml >> push.sh
+
+echo '#######' push.sh
+cat ./push.sh
+echo '#######' push.sh
+echo run ./push.sh
+

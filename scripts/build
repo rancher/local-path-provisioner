@@ -5,5 +5,34 @@ cd $(dirname $0)/..
 VERSION=${VERSION:-$(./scripts/version)}
 
 mkdir -p bin
-[ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s -w"
-CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/local-path-provisioner
+
+if [ "$CROSS" = 1 ]; then
+    ## LINUX
+    
+    # # ppc64le
+    # CGO_ENABLED=0 GOARCH=ppc64le go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner-Linux-ppc64le
+
+    # arm v6
+    CGO_ENABLED=0 GOARCH=arm GOARM=6 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner-linux-armv6
+
+    # arm v7
+    CGO_ENABLED=0 GOARCH=arm GOARM=7 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner-linux-armv7
+
+    # arm64
+    CGO_ENABLED=0 GOARCH=arm64 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner-linux-arm64
+
+    # amd64
+    CGO_ENABLED=0 GOARCH=amd64 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner-linux-amd64
+    
+    # # DARWIN
+    # CGO_ENABLED=0 GOOS=darwin go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner-darwin-x86_64
+
+    # # WINDOWS
+    # CGO_ENABLED=0 GOOS=windows go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner-Windows-x86_64
+
+else
+    [ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s -w"
+    CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o ./bin/local-path-provisioner
+
+    echo Built ./bin/local-path-provisioner
+fi
