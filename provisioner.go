@@ -15,6 +15,7 @@ import (
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	"k8s.io/api/core/v1"
+	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -357,13 +358,13 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 		},
 	}
 
-	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(helperPod)
-	if err != nil {
+	_, err = p.kubeClient.CoreV1().Pods(p.namespace).Create(helperPod)
+	if err != nil && !k8serror.IsAlreadyExists(err) {
 		return err
 	}
 
 	defer func() {
-		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(pod.Name, &metav1.DeleteOptions{})
+		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(helperPod.Name, &metav1.DeleteOptions{})
 		if e != nil {
 			logrus.Errorf("unable to delete the helper pod: %v", e)
 		}
@@ -371,7 +372,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 
 	completed := false
 	for i := 0; i < CmdTimeoutCounts; i++ {
-		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(pod.Name, metav1.GetOptions{}); err != nil {
+		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(helperPod.Name, metav1.GetOptions{}); err != nil {
 			return err
 		} else if pod.Status.Phase == v1.PodSucceeded {
 			completed = true
