@@ -13,7 +13,6 @@ apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
   name: local-path-provisioner-role
-  namespace: local-path-storage
 rules:
 - apiGroups: [""]
   resources: ["nodes", "persistentvolumeclaims"]
@@ -32,7 +31,6 @@ apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
   name: local-path-provisioner-bind
-  namespace: local-path-storage
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
