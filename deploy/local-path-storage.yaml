@@ -9,7 +9,7 @@ metadata:
   name: local-path-provisioner-service-account
   namespace: local-path-storage
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: local-path-provisioner-role
@@ -27,7 +27,7 @@ rules:
   resources: ["storageclasses"]
   verbs: ["get", "list", "watch"]
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: local-path-provisioner-bind
@@ -40,7 +40,7 @@ subjects:
   name: local-path-provisioner-service-account
   namespace: local-path-storage
 ---
-apiVersion: apps/v1beta2
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: local-path-provisioner
