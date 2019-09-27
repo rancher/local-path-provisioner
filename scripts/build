@@ -7,10 +7,9 @@ cd $(dirname $0)/..
 
 mkdir -p bin
 if [ "$(uname)" = "Linux" ]; then
-    OTHER_LINKFLAGS="-extldflags -static -s"
+    OTHER_LINKFLAGS="-extldflags -static -s -w"
 fi
-LINKFLAGS="-X github.com/rancher/local-path-provisioner.Version=$VERSION"
-LINKFLAGS="-X github.com/rancher/local-path-provisioner.GitCommit=$COMMIT $LINKFLAGS"
+LINKFLAGS="-X main.VERSION=$VERSION"
 CGO_ENABLED=0 go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner
 if [ "$CROSS" = "true" ] && [ "$ARCH" = "amd64" ]; then
     GOOS=darwin go build -ldflags "$LINKFLAGS" -o bin/local-path-provisioner-darwin
