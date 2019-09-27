@@ -1,3 +1,0 @@
-# Release Process
-
-TBD
