@@ -3,13 +3,5 @@ set -e
 
 cd $(dirname $0)/..
 
-args=$1
-
 echo Running tests
-
-PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin)')"
-
-echo Packages: ${PACKAGES}
-
-[ "${ARCH}" == "amd64" ] && RACE=-race
-go test ${RACE} ${args} ${PACKAGES}
+go test -cover -tags=test ./...
