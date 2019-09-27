@@ -1,26 +1,18 @@
 #!/bin/bash
 set -e
 
+source $(dirname $0)/version
+
 cd $(dirname $0)/..
 
-ARCH=${ARCH:-amd64}
-SUFFIX=""
-[ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
+mkdir -p dist/artifacts
+cp bin/local-path-provisioner dist/artifacts/local-path-provisioner${SUFFIX}
 
-export VERSION=${VERSION:-$(./scripts/version)}
-
-TAG=${TAG:-${VERSION}${SUFFIX}}
-REPO=${REPO:-rancher}
-IMAGE=${IMAGE:-${REPO}/local-path-provisioner:${TAG}}
-
-if [ ! -e ./bin/local-path-provisioner ]; then
-    ./scripts/build
+IMAGE=${REPO}/local-path-provisioner:${TAG}
+DOCKERFILE=package/Dockerfile
+if [ -e ${DOCKERFILE}.${ARCH} ]; then
+    DOCKERFILE=${DOCKERFILE}.${ARCH}
 fi
 
-cp -a ./bin ./package/
-trap 'rm -rf ./package/bin' exit
-docker build -t ${IMAGE} ./package
-
+docker build -f ${DOCKERFILE} -t ${IMAGE} .
 echo Built ${IMAGE}
-
-echo ${IMAGE} > ./bin/latest_image
