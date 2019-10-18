@@ -149,12 +149,12 @@ The configuration must obey following rules:
 
 ### Reloading
 
-The provisioner supports automatic configuration reloading. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. There is a delay between when the user updates the config map and the provisioner picking it up.
+The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. It will be a delay between user update the config map and the provisioner pick it up.
 
-When the provisioner detects the configuration changes, it will try to load the new configuration. Users can observe it in the log
+When the provisioner detected the configuration changes, it will try to load the new configuration. Users can observe it in the log
 >time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-path-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
 
-If the reload fails, the provisioner will log the error and **continue using the last valid configuration for provisioning in the meantime**.
+If the reload failed due to some reason, the provisioner will report error in the log, and **continue using the last valid configuration for provisioning in the meantime**.
 >time="2018-10-03T05:19:25Z" level=error msg="failed to load the new config file: fail to load config file /etc/config/config.json: invalid character '#' looking for beginning of object key string"
 
 >time="2018-10-03T05:20:10Z" level=error msg="failed to load the new config file: config canonicalization failed: path must start with / for path opt on node yasker-lp-dev1"
@@ -165,7 +165,7 @@ If the reload fails, the provisioner will log the error and **continue using the
 
 ## Uninstall
 
-Before uninstallation, make sure the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
+Before uninstallation, make sure the PVs created by the provisioner has already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
 
 To uninstall, execute:
 
