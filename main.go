@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
+	"flag"
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -138,7 +138,8 @@ func startDaemon(c *cli.Context) error {
 
 func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
-
+	// Fixing the issue which is coming from glog library in the controller.go
+	flag.Parse()
 	a := cli.NewApp()
 	a.Version = VERSION
 	a.Usage = "Local Path Provisioner"
