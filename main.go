@@ -1,14 +1,14 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 	"flag"
+	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
+	"os"
+	"os/signal"
+	"syscall"
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	clientset "k8s.io/client-go/kubernetes"
