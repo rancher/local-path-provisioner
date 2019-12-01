@@ -3,12 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/pkg/errors"
-	"github.com/urfave/cli"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
+	"github.com/urfave/cli"
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	clientset "k8s.io/client-go/kubernetes"
