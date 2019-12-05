@@ -120,7 +120,6 @@ func startDaemon(c *cli.Context) error {
 	if helperImage == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagHelperImage)
 	}
-
 	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage)
 	if err != nil {
 		return err
@@ -140,13 +139,17 @@ func startDaemon(c *cli.Context) error {
 func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 	// Fixing the issue which is coming from glog library in the controller.go
-	flag.Parse()
+	//flag.Parse()
 	a := cli.NewApp()
 	a.Version = VERSION
 	a.Usage = "Local Path Provisioner"
 
+	var debugEnabled bool
+	flag.BoolVar(&debugEnabled, "debug", false, "enable debugging")
+	flag.Parse()
+
 	a.Before = func(c *cli.Context) error {
-		if c.GlobalBool("debug") {
+		if c.GlobalBool("debug") || debugEnabled {
 			logrus.SetLevel(logrus.DebugLevel)
 		}
 		return nil
