@@ -180,13 +180,16 @@ func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.P
 	if err != nil {
 		return nil, err
 	}
-	name := opts.PVName
+
+	name := opts.PVC.Namespace + "--" + opts.PVC.Name
 	path := filepath.Join(basePath, name)
+	path = strings.Replace(path, "--", "/", 1)
 	logrus.Infof("Creating volume %v at %v:%v", name, node.Name, path)
 
 	createCmdsForPath := []string{
 		"mkdir",
-		"-m", "0777",
+		"-m",
+		"0777",
 		"-p",
 	}
 	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name); err != nil {
@@ -242,6 +245,7 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 		return err
 	}
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
+		path = strings.Replace(path, "--", "/", 1)
 		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
 		cleanupCmdsForPath := []string{"rm", "-rf"}
 		if err := p.createHelperPod(ActionTypeDelete, cleanupCmdsForPath, pv.Name, path, node); err != nil {
