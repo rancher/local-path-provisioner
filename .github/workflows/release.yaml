@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+    - v*
+
+jobs:
+  build:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@master
+    
+    - name: Get dependencies
+      run: GO111MODULE=on go mod download
+    
+    - name: Set up Docker Buildx
+      id: buildx
+      uses: crazy-max/ghaction-docker-buildx@v1
+      with:
+        version: latest
+    
+    - name: docker hub login
+      env:
+        HUB_PASSWORD: ${{ secrets.HUB_PASSWORD }}
+      run: docker login -u egeneralov -p ${HUB_PASSWORD}
+    
+    - name: docker build+push
+      run: docker buildx build -t ${GITHUB_REPOSITORY}:$(echo $GITHUB_REF | awk -F \/ '{print $3}') --platform linux/amd64,linux/arm64,linux/arm/v7 --output "type=image,push=true" .
+    
+    - name: docker hub logout
+      run: docker logout
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1.0.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
