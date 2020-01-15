@@ -24,8 +24,12 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// CSINodes returns a CSINodeInformer.
+	CSINodes() CSINodeInformer
 	// StorageClasses returns a StorageClassInformer.
 	StorageClasses() StorageClassInformer
+	// VolumeAttachments returns a VolumeAttachmentInformer.
+	VolumeAttachments() VolumeAttachmentInformer
 }
 
 type version struct {
@@ -39,7 +43,17 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
+// CSINodes returns a CSINodeInformer.
+func (v *version) CSINodes() CSINodeInformer {
+	return &cSINodeInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
 // StorageClasses returns a StorageClassInformer.
 func (v *version) StorageClasses() StorageClassInformer {
 	return &storageClassInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VolumeAttachments returns a VolumeAttachmentInformer.
+func (v *version) VolumeAttachments() VolumeAttachmentInformer {
+	return &volumeAttachmentInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
