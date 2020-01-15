@@ -10,9 +10,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
-	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
 
 var (
