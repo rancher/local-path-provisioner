@@ -58,7 +58,7 @@ spec:
       serviceAccountName: local-path-provisioner-service-account
       containers:
       - name: local-path-provisioner
-        image: rancher/local-path-provisioner:v0.0.11
+        image: rancher/local-path-provisioner:v0.0.12
         imagePullPolicy: IfNotPresent
         command:
         - local-path-provisioner
