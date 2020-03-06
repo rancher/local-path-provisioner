@@ -180,8 +180,11 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 	if err != nil {
 		return nil, err
 	}
+
 	name := opts.PVName
-	path := filepath.Join(basePath, name)
+	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
+
+	path := filepath.Join(basePath, folderName)
 	logrus.Infof("Creating volume %v at %v:%v", name, node.Name, path)
 
 	createCmdsForPath := []string{
