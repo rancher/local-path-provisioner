@@ -119,9 +119,11 @@ func (p *LocalPathProvisioner) refreshConfig() error {
 
 func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	go func() {
+		ticker := time.NewTicker(ConfigFileCheckInterval)
+		defer ticker.Stop()
 		for {
 			select {
-			case <-time.Tick(ConfigFileCheckInterval):
+			case <-ticker.C:
 				if err := p.refreshConfig(); err != nil {
 					logrus.Errorf("failed to load the new config file: %v", err)
 				}
