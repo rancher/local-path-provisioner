@@ -7,6 +7,10 @@ image:
   tag: v0.0.14
   pullPolicy: IfNotPresent
 
+helperImage:
+  repository: busybox
+  tag: latest
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

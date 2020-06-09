@@ -33,6 +33,8 @@ spec:
             - /etc/config/config.json
             - --provisioner-name
             - {{ template "local-path-provisioner.provisionerName" . }}
+            - --helper-image
+            - "{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config/
