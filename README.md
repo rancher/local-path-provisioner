@@ -9,7 +9,7 @@ Local Path Provisioner provides a way for the Kubernetes users to utilize the lo
 
 ### Pros
 Dynamic provisioning the volume using host path.
-* Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-incubator/external-storage/tree/master/local-volume) cannot do dynamic provisioning for the host path volumes.
+* Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-sigs/sig-storage-local-static-provisioner) cannot do dynamic provisioning for the host path volumes.
 
 ### Cons
 1. No support for the volume capacity limit currently.
