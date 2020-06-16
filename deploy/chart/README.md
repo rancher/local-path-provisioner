@@ -71,6 +71,8 @@ default values.
 | `nodeSelector`                      | Node labels for Local Path Provisioner pod assignment                           | `{}`                                                                                |
 | `tolerations`                       | Node taints to tolerate                                                         | `[]`                                                                                |
 | `affinity`                          | Pod affinity                                                                    | `{}`                                                                                |
+| `setup`                             | Configuration of script to execute setup operations on each node                | #!/bin/sh<br>path=$1<br>mkdir -m 0777 -p ${path}                                    |
+| `teardown`                          | Configuration of script to execute teardown operations on each node             | #!/bin/sh<br>path=$1<br>rm -rf ${path}                                            |
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 

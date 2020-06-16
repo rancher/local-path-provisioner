@@ -11,3 +11,7 @@ data:
     {
       "nodePathMap": {{ .Values.nodePathMap | toPrettyJson | nindent 8 }}
     }
+  setup: |-
+    {{ .Values.setup | nindent 4 }}
+  teardown: |-
+    {{ .Values.teardown | nindent 4 }}
