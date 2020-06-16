@@ -129,6 +129,14 @@ data:
                 }
                 ]
         }
+  setup: |-
+        #!/bin/sh
+        path=$1
+        mkdir -m 0777 -p ${path}
+  teardown: |-
+        #!/bin/sh
+        path=$1
+        rm -rf ${path}
 
 ```
 
