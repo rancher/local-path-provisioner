@@ -3,18 +3,17 @@
 
 ## Overview
 
-Local Path Provisioner provides a way for the Kubernetes users to utilize the local storage in each node. Based on the user configuration, the Local Path Provisioner will create `hostPath` based persistent volume on the node automatically. It utilizes the features introduced by Kubernetes [Local Persistent Volume feature](https://kubernetes.io/blog/2018/04/13/local-persistent-volumes-beta/), but make it a simpler solution than the built-in `local` volume feature in Kubernetes.
+Local Path Provisioner provides a way for the Kubernetes users to utilize the local storage in each node. Based on the user configuration, the Local Path Provisioner will create `local` based persistent volume on the node automatically. It utilizes the features introduced by Kubernetes [Local Persistent Volume feature](https://kubernetes.io/blog/2018/04/13/local-persistent-volumes-beta/), but make it a simpler solution than the built-in `local` volume feature in Kubernetes.
 
 ## Compare to built-in Local Persistent Volume feature in Kubernetes
 
 ### Pros
-Dynamic provisioning the volume using host path.
-* Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-sigs/sig-storage-local-static-provisioner) cannot do dynamic provisioning for the host path volumes.
+Dynamic provisioning the volume using [local volume](https://kubernetes.io/docs/concepts/storage/volumes/#local).
+* Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-sigs/sig-storage-local-static-provisioner) cannot do dynamic provisioning for the local volumes.
 
 ### Cons
 1. No support for the volume capacity limit currently.
     1. The capacity limit will be ignored for now.
-2. Only support `hostPath`
 
 ## Requirement
 Kubernetes v1.12+.
@@ -43,7 +42,7 @@ $ kubectl -n local-path-storage logs -f -l app=local-path-provisioner
 
 ## Usage
 
-Create a `hostPath` backed Persistent Volume and a pod uses it:
+Create a `local` backend Persistent Volume and a pod uses it:
 
 ```
 kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc.yaml
@@ -104,7 +103,7 @@ Now you've verified that the provisioner works as expected.
 
 ## Configuration
 
-The configuration of the provisioner is a json file `config.json`, stored in the a config map, e.g.:
+The configuration of the provisioner is a json file `config.json` and two bash scripts `setup` and `teardown`, stored in the a config map, e.g.:
 ```
 kind: ConfigMap
 apiVersion: v1
@@ -140,20 +139,28 @@ data:
 
 ```
 
-### Definition
+### `config.json`
+
+#### Definition
 `nodePathMap` is the place user can customize where to store the data on each node.
 1. If one node is not listed on the `nodePathMap`, and Kubernetes wants to create volume on it, the paths specified in `DEFAULT_PATH_FOR_NON_LISTED_NODES` will be used for provisioning.
 2. If one node is listed on the `nodePathMap`, the specified paths in `paths` will be used for provisioning.
     1. If one node is listed but with `paths` set to `[]`, the provisioner will refuse to provision on this node.
     2. If more than one path was specified, the path would be chosen randomly when provisioning.
 
-### Rules
+#### Rules
 The configuration must obey following rules:
 1. `config.json` must be a valid json file.
 2. A path must start with `/`, a.k.a an absolute path.
 2. Root directory(`/`) is prohibited.
 3. No duplicate paths allowed for one node.
 4. No duplicate node allowed.
+
+### Scripts `setup` and `teardown`
+
+The script `setup` will be executed before the volume is created, to prepare the directory on the node for the volume.
+
+The script `teardown` will be executed after the volume is deleted, to cleanup the directory on the node for the volume.
 
 ### Reloading
 
