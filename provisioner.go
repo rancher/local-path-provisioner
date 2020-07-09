@@ -56,8 +56,8 @@ type NodePathMapData struct {
 }
 
 type ConfigData struct {
-	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
-	PrivilegedHelper bool `json:"privilegedHelper"`
+	NodePathMap      []*NodePathMapData `json:"nodePathMap,omitempty"`
+	PrivilegedHelper bool               `json:"privilegedHelper"`
 }
 
 type NodePathMap struct {
@@ -335,10 +335,10 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			},
 			Containers: []v1.Container{
 				{
-					Name:    "local-path-" + string(action),
-					Image:   p.helperImage,
-					SecurityContext: &v1.SecurityContext{ 
-						Privileged: &privileged },
+					Name:  "local-path-" + string(action),
+					Image: p.helperImage,
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &privileged},
 					Command: append(cmdsForPath, filepath.Join("/data/", volumeDir)),
 					VolumeMounts: []v1.VolumeMount{
 						{
