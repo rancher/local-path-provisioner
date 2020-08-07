@@ -417,10 +417,27 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 	return nil
 }
 
+func isJSONFile(configFile string) bool {
+	return strings.HasSuffix(configFile, ".json")
+}
+
+func unmarshalFromString(configFile string) (*ConfigData, error) {
+	var data ConfigData
+	if err := json.Unmarshal([]byte(configFile), &data); err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
 func loadConfigFile(configFile string) (cfgData *ConfigData, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to load config file %v", configFile)
 	}()
+
+	if !isJSONFile(configFile) {
+		return unmarshalFromString(configFile)
+	}
+
 	f, err := os.Open(configFile)
 	if err != nil {
 		return nil, err

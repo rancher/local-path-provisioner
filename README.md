@@ -188,6 +188,26 @@ To uninstall, execute:
 kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
 
+## Debug
+> it providers a out-of-cluster debug env for deverlopers
+### debug
+```
+git clone https://github.com/rancher/local-path-provisioner.git
+cd local-path-provisioner
+go build
+kubectl apply -f debug/config.yaml
+./local-path-provisioner --debug start --namespace=local-path-storage
+```
+
+### example
+[Usage](##Usage)
+
+### clear
+```
+kubectl delete -f debug/config.yaml
+```
+
+
 ## License
 
 Copyright (c) 2014-2020  [Rancher Labs, Inc.](http://rancher.com/)
