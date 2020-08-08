@@ -4,30 +4,37 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
 
 var (
 	VERSION = "0.0.1"
 
-	FlagConfigFile         = "config"
-	FlagProvisionerName    = "provisioner-name"
-	EnvProvisionerName     = "PROVISIONER_NAME"
-	DefaultProvisionerName = "rancher.io/local-path"
-	FlagNamespace          = "namespace"
-	EnvNamespace           = "POD_NAMESPACE"
-	DefaultNamespace       = "local-path-storage"
-	FlagHelperImage        = "helper-image"
-	EnvHelperImage         = "HELPER_IMAGE"
-	DefaultHelperImage     = "busybox"
+	FlagConfigFile            = "config"
+	FlagProvisionerName       = "provisioner-name"
+	EnvProvisionerName        = "PROVISIONER_NAME"
+	DefaultProvisionerName    = "rancher.io/local-path"
+	FlagNamespace             = "namespace"
+	EnvNamespace              = "POD_NAMESPACE"
+	DefaultNamespace          = "local-path-storage"
+	FlagHelperImage           = "helper-image"
+	EnvHelperImage            = "HELPER_IMAGE"
+	DefaultHelperImage        = "busybox"
+	FlagKubeconfig            = "kubeconfig"
+	DefaultKubeConfigFilePath = ".kube/config"
+	DefaultConfigFileKey      = "config.json"
+	DefaultConfigMapName      = "local-path-config"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -75,6 +82,11 @@ func StartCmd() cli.Command {
 				EnvVar: EnvHelperImage,
 				Value:  DefaultHelperImage,
 			},
+			cli.StringFlag{
+				Name:  FlagKubeconfig,
+				Usage: "Paths to a kubeconfig. Only required when it is out-of-cluster.",
+				Value: "",
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := startDaemon(c); err != nil {
@@ -84,11 +96,45 @@ func StartCmd() cli.Command {
 	}
 }
 
+func homeDir() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	return os.Getenv("USERPROFILE") // windows
+}
+
+func loadConfig(kubeconfig string) (*rest.Config, error) {
+	if c, err := rest.InClusterConfig(); err == nil {
+		return c, nil
+	}
+	home := homeDir()
+	if kubeconfig == "" && home != "" {
+		kubeconfig = filepath.Join(home, DefaultKubeConfigFilePath)
+	}
+	_, err := os.Stat(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	return clientcmd.BuildConfigFromFlags("", kubeconfig)
+}
+
+func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace string) (string, error) {
+	cm, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(DefaultConfigMapName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	configFile, ok := cm.Data[DefaultConfigFileKey]
+	if !ok {
+		return "", fmt.Errorf("%v is not exist in local-path-config ConfigMap", DefaultConfigFileKey)
+	}
+	return configFile, nil
+}
+
 func startDaemon(c *cli.Context) error {
 	stopCh := make(chan struct{})
 	RegisterShutdownChannel(stopCh)
 
-	config, err := rest.InClusterConfig()
+	config, err := loadConfig(c.String(FlagKubeconfig))
 	if err != nil {
 		return errors.Wrap(err, "unable to get client config")
 	}
@@ -103,10 +149,6 @@ func startDaemon(c *cli.Context) error {
 		return errors.Wrap(err, "Cannot start Provisioner: failed to get Kubernetes server version")
 	}
 
-	configFile := c.String(FlagConfigFile)
-	if configFile == "" {
-		return fmt.Errorf("invalid empty flag %v", FlagConfigFile)
-	}
 	provisionerName := c.String(FlagProvisionerName)
 	if provisionerName == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagProvisionerName)
@@ -114,6 +156,13 @@ func startDaemon(c *cli.Context) error {
 	namespace := c.String(FlagNamespace)
 	if namespace == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagNamespace)
+	}
+	configFile := c.String(FlagConfigFile)
+	if configFile == "" {
+		configFile, err = findConfigFileFromConfigMap(kubeClient, namespace)
+		if err != nil {
+			return fmt.Errorf("invalid empty flag %v and it also does not exist at ConfigMap %v/%v", FlagConfigFile, namespace, DefaultConfigMapName)
+		}
 	}
 	helperImage := c.String(FlagHelperImage)
 	if helperImage == "" {

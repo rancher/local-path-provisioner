@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-path-storage
+---
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+
+---
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+data:
+  config.json: |-
+        {
+                "nodePathMap":[
+                {
+                        "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                        "paths":["/opt/local-path-provisioner"]
+                },
+                {
+                        "node":"yasker-lp-dev1",
+                        "paths":["/opt/local-path-provisioner", "/data1"]
+                },
+                {
+                        "node":"yasker-lp-dev3",
+                        "paths":[]
+                }
+                ]
+        }
+  setup: |-
+        #!/bin/sh
+        path=$1
+        mkdir -m 0777 -p ${path}
+  teardown: |-
+        #!/bin/sh
+        path=$1
+        rm -rf ${path}
+
