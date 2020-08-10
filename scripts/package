@@ -16,3 +16,5 @@ fi
 
 docker build -f ${DOCKERFILE} -t ${IMAGE} .
 echo Built ${IMAGE}
+
+echo ${IMAGE} > ./bin/latest_image

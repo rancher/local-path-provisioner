@@ -8,3 +8,8 @@ cd $(dirname $0)
 ./validate
 ./validate-ci
 ./package
+
+image=`cat ../bin/latest_image`
+
+echo
+echo Local Path Provisioner image: ${image}
