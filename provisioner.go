@@ -44,10 +44,11 @@ type LocalPathProvisioner struct {
 	namespace   string
 	helperImage string
 
-	config      *Config
-	configData  *ConfigData
-	configFile  string
-	configMutex *sync.RWMutex
+	config        *Config
+	configData    *ConfigData
+	configFile    string
+	configMapName string
+	configMutex   *sync.RWMutex
 }
 
 type NodePathMapData struct {
@@ -67,7 +68,7 @@ type Config struct {
 	NodePathMap map[string]*NodePathMap
 }
 
-func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace, helperImage string) (*LocalPathProvisioner, error) {
+func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace, helperImage, configMapName string) (*LocalPathProvisioner, error) {
 	p := &LocalPathProvisioner{
 		stopCh: stopCh,
 
@@ -76,10 +77,11 @@ func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, confi
 		helperImage: helperImage,
 
 		// config will be updated shortly by p.refreshConfig()
-		config:      nil,
-		configFile:  configFile,
-		configData:  nil,
-		configMutex: &sync.RWMutex{},
+		config:        nil,
+		configFile:    configFile,
+		configData:    nil,
+		configMapName: configMapName,
+		configMutex:   &sync.RWMutex{},
 	}
 	if err := p.refreshConfig(); err != nil {
 		return nil, err
@@ -368,7 +370,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 					VolumeSource: v1.VolumeSource{
 						ConfigMap: &v1.ConfigMapVolumeSource{
 							LocalObjectReference: v1.LocalObjectReference{
-								Name: "local-path-config",
+								Name: p.configMapName,
 							},
 							Items: []v1.KeyToPath{
 								{

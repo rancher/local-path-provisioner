@@ -79,12 +79,17 @@ tolerations: []
 
 affinity: {}
 
-setup: |-
-  #!/bin/sh
-  path=$1
-  mkdir -m 0777 -p ${path}
+configmap:
+  # specify the config map name
+  name: local-path-config
+  # specify the custom script for setup and teardown
+  setup: |-
+    #!/bin/sh
+    path=$1
+    mkdir -m 0777 -p ${path}
 
-teardown: |-
-  #!/bin/sh
-  path=$1
-  rm -rf ${path}
+  teardown: |-
+    #!/bin/sh
+    path=$1
+    rm -rf ${path}
+

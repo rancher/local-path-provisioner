@@ -35,6 +35,7 @@ var (
 	DefaultKubeConfigFilePath = ".kube/config"
 	DefaultConfigFileKey      = "config.json"
 	DefaultConfigMapName      = "local-path-config"
+	FlagConfigMapName         = "configmap-name"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -87,6 +88,11 @@ func StartCmd() cli.Command {
 				Usage: "Paths to a kubeconfig. Only required when it is out-of-cluster.",
 				Value: "",
 			},
+			cli.StringFlag{
+				Name:  FlagConfigMapName,
+				Usage: "Required. Specify configmap name.",
+				Value: DefaultConfigMapName,
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := startDaemon(c); err != nil {
@@ -118,8 +124,8 @@ func loadConfig(kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags("", kubeconfig)
 }
 
-func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace string) (string, error) {
-	cm, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(DefaultConfigMapName, metav1.GetOptions{})
+func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace, configMapName string) (string, error) {
+	cm, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(configMapName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -157,11 +163,15 @@ func startDaemon(c *cli.Context) error {
 	if namespace == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagNamespace)
 	}
+	configMapName := c.String(FlagConfigMapName)
+	if configMapName == "" {
+		return fmt.Errorf("invalid empty flag %v", FlagConfigMapName)
+	}
 	configFile := c.String(FlagConfigFile)
 	if configFile == "" {
-		configFile, err = findConfigFileFromConfigMap(kubeClient, namespace)
+		configFile, err = findConfigFileFromConfigMap(kubeClient, namespace, configMapName)
 		if err != nil {
-			return fmt.Errorf("invalid empty flag %v and it also does not exist at ConfigMap %v/%v", FlagConfigFile, namespace, DefaultConfigMapName)
+			return fmt.Errorf("invalid empty flag %v and it also does not exist at ConfigMap %v/%v with err: %v", FlagConfigFile, namespace, configMapName, err)
 		}
 	}
 	helperImage := c.String(FlagHelperImage)
@@ -169,7 +179,7 @@ func startDaemon(c *cli.Context) error {
 		return fmt.Errorf("invalid empty flag %v", FlagHelperImage)
 	}
 
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage)
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage, configMapName)
 	if err != nil {
 		return err
 	}
