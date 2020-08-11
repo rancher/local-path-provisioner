@@ -46,7 +46,7 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: {{ include "local-path-provisioner.fullname" . }}
+            name: {{ .Values.configmap.name }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
