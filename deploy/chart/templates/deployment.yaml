@@ -35,6 +35,8 @@ spec:
             - {{ template "local-path-provisioner.provisionerName" . }}
             - --helper-image
             - "{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
+            - --configmap-name
+            - {{ .Values.configmap.name }}
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config/
