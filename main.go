@@ -31,6 +31,8 @@ var (
 	FlagHelperImage        = "helper-image"
 	EnvHelperImage         = "HELPER_IMAGE"
 	DefaultHelperImage     = "busybox"
+	FlagServiceAccountName = "service-account-name"
+	EnvServiceAccountName  = "SERVICE_ACCOUNT_NAME"
 	FlagKubeconfig         = "kubeconfig"
 	DefaultConfigFileKey   = "config.json"
 	DefaultConfigMapName   = "local-path-config"
@@ -91,6 +93,11 @@ func StartCmd() cli.Command {
 				Name:  FlagConfigMapName,
 				Usage: "Required. Specify configmap name.",
 				Value: DefaultConfigMapName,
+			},
+			cli.StringFlag{
+				Name:   FlagServiceAccountName,
+				Usage:  "Required. The ServiceAccountName for deployment",
+				EnvVar: EnvServiceAccountName,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -186,7 +193,12 @@ func startDaemon(c *cli.Context) error {
 		return fmt.Errorf("invalid empty flag %v", FlagHelperImage)
 	}
 
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage, configMapName)
+	serviceAccountName := c.String(FlagServiceAccountName)
+	if serviceAccountName == "" {
+		return fmt.Errorf("invalid empty flag %v", FlagServiceAccountName)
+	}
+
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName)
 	if err != nil {
 		return err
 	}
