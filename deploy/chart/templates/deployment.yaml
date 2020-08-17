@@ -23,7 +23,11 @@ spec:
       serviceAccountName: {{ template "local-path-provisioner.serviceAccountName" . }}
       containers:
         - name: {{ .Chart.Name }}
+        {{- if .Values.privateRegistry.registryUrl }}
+          image: "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        {{- else }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - local-path-provisioner
@@ -31,10 +35,16 @@ spec:
             - start
             - --config
             - /etc/config/config.json
+            - --service-account-name
+            - {{ template "local-path-provisioner.serviceAccountName" . }}
             - --provisioner-name
             - {{ template "local-path-provisioner.provisionerName" . }}
             - --helper-image
+          {{- if .Values.privateRegistry.registryUrl }}
+            - "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
+          {{- else }}
             - "{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
+          {{- end }}
             - --configmap-name
             - {{ .Values.configmap.name }}
           volumeMounts:

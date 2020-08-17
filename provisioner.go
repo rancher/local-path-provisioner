@@ -39,10 +39,11 @@ var (
 )
 
 type LocalPathProvisioner struct {
-	stopCh      chan struct{}
-	kubeClient  *clientset.Clientset
-	namespace   string
-	helperImage string
+	stopCh             chan struct{}
+	kubeClient         *clientset.Clientset
+	namespace          string
+	helperImage        string
+	serviceAccountName string
 
 	config        *Config
 	configData    *ConfigData
@@ -68,13 +69,14 @@ type Config struct {
 	NodePathMap map[string]*NodePathMap
 }
 
-func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace, helperImage, configMapName string) (*LocalPathProvisioner, error) {
+func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace, helperImage, configMapName string, serviceAccountName string) (*LocalPathProvisioner, error) {
 	p := &LocalPathProvisioner{
 		stopCh: stopCh,
 
-		kubeClient:  kubeClient,
-		namespace:   namespace,
-		helperImage: helperImage,
+		kubeClient:         kubeClient,
+		namespace:          namespace,
+		helperImage:        helperImage,
+		serviceAccountName: serviceAccountName,
 
 		// config will be updated shortly by p.refreshConfig()
 		config:        nil,
@@ -328,8 +330,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			Namespace: p.namespace,
 		},
 		Spec: v1.PodSpec{
-			RestartPolicy: v1.RestartPolicyNever,
-			NodeName:      node,
+			RestartPolicy:      v1.RestartPolicyNever,
+			NodeName:           node,
+			ServiceAccountName: p.serviceAccountName,
 			Tolerations: []v1.Toleration{
 				{
 					Operator: v1.TolerationOpExists,

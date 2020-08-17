@@ -65,3 +65,7 @@ Create the name of the provisioner to use.
 cluster.local/{{ template "local-path-provisioner.fullname" . -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "local-path-provisioner.secret" }}
+{{- printf "{\"auths\": {\"%s\": {\"auth\": \"%s\"}}}" .Values.privateRegistry.registryUrl (printf "%s:%s" .Values.privateRegistry.registryUser .Values.privateRegistry.registryPasswd | b64enc) | b64enc }}
+{{- end }}
