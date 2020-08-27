@@ -21,21 +21,20 @@ import (
 var (
 	VERSION = "0.0.1"
 
-	FlagConfigFile            = "config"
-	FlagProvisionerName       = "provisioner-name"
-	EnvProvisionerName        = "PROVISIONER_NAME"
-	DefaultProvisionerName    = "rancher.io/local-path"
-	FlagNamespace             = "namespace"
-	EnvNamespace              = "POD_NAMESPACE"
-	DefaultNamespace          = "local-path-storage"
-	FlagHelperImage           = "helper-image"
-	EnvHelperImage            = "HELPER_IMAGE"
-	DefaultHelperImage        = "busybox"
-	FlagKubeconfig            = "kubeconfig"
-	DefaultKubeConfigFilePath = ".kube/config"
-	DefaultConfigFileKey      = "config.json"
-	DefaultConfigMapName      = "local-path-config"
-	FlagConfigMapName         = "configmap-name"
+	FlagConfigFile         = "config"
+	FlagProvisionerName    = "provisioner-name"
+	EnvProvisionerName     = "PROVISIONER_NAME"
+	DefaultProvisionerName = "rancher.io/local-path"
+	FlagNamespace          = "namespace"
+	EnvNamespace           = "POD_NAMESPACE"
+	DefaultNamespace       = "local-path-storage"
+	FlagHelperImage        = "helper-image"
+	EnvHelperImage         = "HELPER_IMAGE"
+	DefaultHelperImage     = "busybox"
+	FlagKubeconfig         = "kubeconfig"
+	DefaultConfigFileKey   = "config.json"
+	DefaultConfigMapName   = "local-path-config"
+	FlagConfigMapName      = "configmap-name"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -110,17 +109,25 @@ func homeDir() string {
 }
 
 func loadConfig(kubeconfig string) (*rest.Config, error) {
+	if len(kubeconfig) > 0 {
+		return clientcmd.BuildConfigFromFlags("", kubeconfig)
+	}
+
+	kubeconfigPath := os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
+	if len(kubeconfigPath) > 0 {
+		envVarFiles := filepath.SplitList(kubeconfigPath)
+		for _, f := range envVarFiles {
+			if _, err := os.Stat(f); err == nil {
+				return clientcmd.BuildConfigFromFlags("", f)
+			}
+		}
+	}
+
 	if c, err := rest.InClusterConfig(); err == nil {
 		return c, nil
 	}
-	home := homeDir()
-	if kubeconfig == "" && home != "" {
-		kubeconfig = filepath.Join(home, DefaultKubeConfigFilePath)
-	}
-	_, err := os.Stat(kubeconfig)
-	if err != nil {
-		return nil, err
-	}
+
+	kubeconfig = filepath.Join(homeDir(), clientcmd.RecommendedHomeDir, clientcmd.RecommendedFileName)
 	return clientcmd.BuildConfigFromFlags("", kubeconfig)
 }
 
