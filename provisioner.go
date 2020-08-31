@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ type ActionType string
 const (
 	ActionTypeCreate = "create"
 	ActionTypeDelete = "delete"
+	DataDir          = "/data/"
 )
 
 const (
@@ -121,6 +123,10 @@ func (p *LocalPathProvisioner) refreshConfig() error {
 	return err
 }
 
+func (p *LocalPathProvisioner) SupportsBlock() bool {
+	return true
+}
+
 func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	go func() {
 		ticker := time.NewTicker(ConfigFileCheckInterval)
@@ -182,6 +188,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 		return nil, fmt.Errorf("configuration error, no node was specified")
 	}
 
+	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	basePath, err := p.getRandomPathOnNode(node.Name)
 	if err != nil {
 		return nil, err
@@ -197,12 +204,37 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 		"/bin/sh",
 		"/script/setup",
 	}
-	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name); err != nil {
-		return nil, err
+
+	volMode := opts.PVC.Spec.VolumeMode
+	sVolMode := string(*volMode)
+	iSizeInBytes, _ := storage.AsInt64()
+	sizeInBytes := strconv.FormatInt(iSizeInBytes, 10)
+
+	var volSource *v1.PersistentVolumeSource
+	if volMode == nil {
+		volModeFS := v1.PersistentVolumeFilesystem
+		volMode = &volModeFS
+	}
+	switch *volMode {
+	case v1.PersistentVolumeFilesystem:
+		hostPathType := v1.HostPathDirectoryOrCreate
+		volSource = &v1.PersistentVolumeSource{
+			HostPath: &v1.HostPathVolumeSource{
+				Path: path,
+				Type: &hostPathType,
+			},
+		}
+	case v1.PersistentVolumeBlock:
+		volSource = &v1.PersistentVolumeSource{
+			Local: &v1.LocalVolumeSource{
+				Path: path,
+			},
+		}
 	}
 
-	fs := v1.PersistentVolumeFilesystem
-	hostPathType := v1.HostPathDirectoryOrCreate
+	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, sVolMode, path, sizeInBytes, node.Name); err != nil {
+		return nil, err
+	}
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -210,16 +242,11 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: *opts.StorageClass.ReclaimPolicy,
 			AccessModes:                   pvc.Spec.AccessModes,
-			VolumeMode:                    &fs,
+			VolumeMode:                    volMode,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
+				v1.ResourceName(v1.ResourceStorage): storage,
 			},
-			PersistentVolumeSource: v1.PersistentVolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: path,
-					Type: &hostPathType,
-				},
-			},
+			PersistentVolumeSource: *volSource,
 			NodeAffinity: &v1.VolumeNodeAffinity{
 				Required: &v1.NodeSelector{
 					NodeSelectorTerms: []v1.NodeSelectorTerm{
@@ -239,6 +266,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 			},
 		},
 	}, nil
+
 }
 
 func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
@@ -250,9 +278,16 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 		return err
 	}
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
+		volMode := pv.Spec.VolumeMode
+		sVolMode := string(*volMode)
+		if volMode == nil {
+			volModeFS := v1.PersistentVolumeFilesystem
+			volMode = &volModeFS
+		}
 		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
 		cleanupCmdsForPath := []string{"/bin/sh", "/script/teardown"}
-		if err := p.createHelperPod(ActionTypeDelete, cleanupCmdsForPath, pv.Name, path, node); err != nil {
+
+		if err := p.createHelperPod(ActionTypeDelete, cleanupCmdsForPath, pv.Name, sVolMode, path, "", node); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
@@ -268,10 +303,14 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 	}()
 
 	hostPath := pv.Spec.PersistentVolumeSource.HostPath
-	if hostPath == nil {
-		return "", "", fmt.Errorf("no HostPath set")
+	localPath := pv.Spec.PersistentVolumeSource.Local
+	if hostPath != nil {
+		path = hostPath.Path
+	} else if localPath != nil {
+		path = localPath.Path
+	} else {
+		return "", "", fmt.Errorf("no HostPath or localPath set")
 	}
-	path = hostPath.Path
 
 	nodeAffinity := pv.Spec.NodeAffinity
 	if nodeAffinity == nil {
@@ -303,7 +342,7 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 	return path, node, nil
 }
 
-func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []string, name, path, node string) (err error) {
+func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []string, name, volumeMode, path, sizeInBytes, node string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to %v volume %v", action, name)
 	}()
@@ -322,8 +361,13 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 		// it covers the `/` case
 		return fmt.Errorf("invalid path %v for %v: cannot find parent dir or volume dir", action, path)
 	}
+	volPathInContainer := filepath.Join(DataDir, volumeDir)
+	cmdsForPath = append(cmdsForPath, volumeMode)
+	cmdsForPath = append(cmdsForPath, volPathInContainer)
+	cmdsForPath = append(cmdsForPath, sizeInBytes)
 
 	hostPathType := v1.HostPathDirectoryOrCreate
+	privileged := true
 	helperPod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(action) + "-" + name,
@@ -342,12 +386,12 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 				{
 					Name:    "local-path-" + string(action),
 					Image:   p.helperImage,
-					Command: append(cmdsForPath, filepath.Join("/data/", volumeDir)),
+					Command: cmdsForPath,
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      "data",
 							ReadOnly:  false,
-							MountPath: "/data/",
+							MountPath: DataDir,
 						},
 						{
 							Name:      "script",
@@ -356,6 +400,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 						},
 					},
 					ImagePullPolicy: v1.PullIfNotPresent,
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &privileged,
+					},
 				},
 			},
 			Volumes: []v1.Volume{

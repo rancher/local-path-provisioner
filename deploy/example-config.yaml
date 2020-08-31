@@ -23,10 +23,33 @@ data:
         }
   setup: |-
         #!/bin/sh
-        path=$1
-        mkdir -m 0777 -p ${path}
+        type=$1
+        path=$2
+        size=$3
+        if [ "${type}" == "Filesystem" ]; then
+          mkdir -m 0777 -p ${path}
+        elif [ "${type}" == "Block" ]; then
+          filepath="${path}-file"
+          LODEVICE=$(losetup -f)
+          truncate -s ${size} ${filepath}
+          chmod 666 ${filepath}
+          losetup ${LODEVICE} ${filepath}
+          ln -s  ${LODEVICE} ${path}
+        fi
   teardown: |-
         #!/bin/sh
-        path=$1
-        rm -rf ${path}
+        type=$1
+        path=$2
+        if [ "${type}" == "Filesystem" ]; then
+          rm -rf ${path}
+        elif [ "${type}" == "Block" ]; then
+          filepath="${path}-file"
+          // We need to use the first part of the string as losetup in busybox cuts off the full path
+          filepathfrontmost=$(echo ${filepath} | awk -F '_' '{print $1}')
+          // busybox losetup does not have -j flag, we have to simulate it:
+          LODEVICE=$(losetup -a | grep ${filepathfrontmost} | awk -F ':' '{print $1}')
+          losetup -d ${LODEVICE}
+          rm -rf ${filepath}
+          rm -rf ${path}
+        fi
 
