@@ -32,6 +32,7 @@ var (
 	EnvHelperImage         = "HELPER_IMAGE"
 	DefaultHelperImage     = "busybox"
 	FlagServiceAccountName = "service-account-name"
+	DefaultServiceAccount  = "local-path-provisioner-service-account"
 	EnvServiceAccountName  = "SERVICE_ACCOUNT_NAME"
 	FlagKubeconfig         = "kubeconfig"
 	DefaultConfigFileKey   = "config.json"
@@ -98,6 +99,7 @@ func StartCmd() cli.Command {
 				Name:   FlagServiceAccountName,
 				Usage:  "Required. The ServiceAccountName for deployment",
 				EnvVar: EnvServiceAccountName,
+				Value:  DefaultServiceAccount,
 			},
 		},
 		Action: func(c *cli.Context) {
