@@ -103,6 +103,8 @@ Now you've verified that the provisioner works as expected.
 
 ## Configuration
 
+### Customize the ConfigMap
+
 The configuration of the provisioner is a json file `config.json` and two bash scripts `setup` and `teardown`, stored in the a config map, e.g.:
 ```
 kind: ConfigMap
@@ -139,16 +141,16 @@ data:
 
 ```
 
-### `config.json`
+#### `config.json`
 
-#### Definition
+##### Definition
 `nodePathMap` is the place user can customize where to store the data on each node.
 1. If one node is not listed on the `nodePathMap`, and Kubernetes wants to create volume on it, the paths specified in `DEFAULT_PATH_FOR_NON_LISTED_NODES` will be used for provisioning.
 2. If one node is listed on the `nodePathMap`, the specified paths in `paths` will be used for provisioning.
     1. If one node is listed but with `paths` set to `[]`, the provisioner will refuse to provision on this node.
     2. If more than one path was specified, the path would be chosen randomly when provisioning.
 
-#### Rules
+##### Rules
 The configuration must obey following rules:
 1. `config.json` must be a valid json file.
 2. A path must start with `/`, a.k.a an absolute path.
@@ -156,13 +158,13 @@ The configuration must obey following rules:
 3. No duplicate paths allowed for one node.
 4. No duplicate node allowed.
 
-### Scripts `setup` and `teardown`
+#### Scripts `setup` and `teardown`
 
 The script `setup` will be executed before the volume is created, to prepare the directory on the node for the volume.
 
 The script `teardown` will be executed after the volume is deleted, to cleanup the directory on the node for the volume.
 
-### Reloading
+#### Reloading
 
 The provisioner supports automatic configuration reloading. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. There is a delay between when the user updates the config map and the provisioner picking it up.
 
