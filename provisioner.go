@@ -282,7 +282,7 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 		sVolMode := string(*volMode)
 		if volMode == nil {
 			volModeFS := v1.PersistentVolumeFilesystem
-			volMode = &volModeFS
+			sVolMode = string(volModeFS)
 		}
 		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
 		cleanupCmdsForPath := []string{"/bin/sh", "/script/teardown"}
