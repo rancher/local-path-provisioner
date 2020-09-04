@@ -69,7 +69,7 @@ spec:
         - --service-account-name
         - local-path-provisioner-service-account
         - --provisioner-name
-        - cluster.local/local-path-provisioner
+        - rancher.io/local-path
         - --helper-image
         - busybox:latest
         - --configmap-name
