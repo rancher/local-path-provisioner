@@ -66,6 +66,14 @@ spec:
         - start
         - --config
         - /etc/config/config.json
+        - --service-account-name
+        - local-path-provisioner-service-account
+        - --provisioner-name
+        - cluster.local/local-path-provisioner
+        - --helper-image
+        - busybox:latest
+        - --configmap-name
+        - local-path-config
         volumeMounts:
         - name: config-volume
           mountPath: /etc/config/
