@@ -8,6 +8,8 @@ kind: ServiceAccount
 metadata:
   name: local-path-provisioner-service-account
   namespace: local-path-storage
+imagePullSecrets:
+  - name: registry-secret
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -58,12 +60,14 @@ spec:
       serviceAccountName: local-path-provisioner-service-account
       containers:
       - name: local-path-provisioner
-        image: rancher/local-path-provisioner:v0.0.18
+        image: <REGISTRY_URL>/rancher/local-path-provisioner:v0.0.18
         imagePullPolicy: IfNotPresent
         command:
         - local-path-provisioner
         - --debug
         - start
+        - --helper-image
+        - <REGISTRY_URL>/busybox
         - --service-account-name
         - local-path-provisioner-service-account
         - --config
