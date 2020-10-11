@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  containers:
+  - name: helper-pod
+    image: xxx/storage-xfs-quota:v0.1
+    imagePullPolicy: Always
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: xfs-quota-projects
+      subPath: projects
+      mountPath: /etc/projects
+    - name: xfs-quota-projects
+      subPath: projid
+      mountPath: /etc/projid
+  volumes:
+  - name: xfs-quota-projects
+    hostPath:
+      path: /etc

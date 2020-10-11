@@ -71,9 +71,11 @@ default values.
 | `nodeSelector`                      | Node labels for Local Path Provisioner pod assignment                           | `{}`                                                                                |
 | `tolerations`                       | Node taints to tolerate                                                         | `[]`                                                                                |
 | `affinity`                          | Pod affinity                                                                    | `{}`                                                                                |
-| `configmap.setup`                   | Configuration of script to execute setup operations on each node                | #!/bin/sh<br>path=$1<br>mkdir -m 0777 -p ${path}                                    |
-| `configmap.teardown`                | Configuration of script to execute teardown operations on each node             | #!/bin/sh<br>path=$1<br>rm -rf ${path}                                              |
+| `configmap.setup`                   | Configuration of script to execute setup operations on each node                | #!/bin/sh<br>while getopts "m:s:p:" opt<br>do<br>&emsp;case $opt in <br>&emsp;&emsp;p)<br>&emsp;&emsp;absolutePath=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;s)<br>&emsp;&emsp;sizeInBytes=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;m)<br>&emsp;&emsp;volMode=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;esac<br>done<br>mkdir -m 0777 -p ${absolutePath}                                    |
+| `configmap.teardown`                | Configuration of script to execute teardown operations on each node             | #!/bin/sh<br>while getopts "m:s:p:" opt<br>do<br>&emsp;case $opt in <br>&emsp;&emsp;p)<br>&emsp;&emsp;absolutePath=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;s)<br>&emsp;&emsp;sizeInBytes=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;m)<br>&emsp;&emsp;volMode=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;esac<br>done<br>rm -rf ${absolutePath}                                              |
 | `configmap.name`                    | configmap name                                                                  | `local-path-config`                                                                 |
+| `configmap.helperPod`               | helper pod yaml file                                                            | apiVersion: v1<br>kind: Pod<br>metadata:<br>&emsp;name: helper-pod<br>spec:<br>&emsp;containers:<br>&emsp;- name: helper-pod<br>&emsp;&emsp;image: busybox |
+
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 

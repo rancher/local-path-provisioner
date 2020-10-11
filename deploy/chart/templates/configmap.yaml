@@ -15,3 +15,6 @@ data:
     {{ .Values.configmap.setup | nindent 4 }}
   teardown: |-
     {{ .Values.configmap.teardown | nindent 4 }}
+  helperPod.yaml: |-
+    {{ .Values.configmap.helperPod | nindent 4 }}
+

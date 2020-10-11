@@ -18,4 +18,5 @@ require (
 	k8s.io/apimachinery v0.17.1
 	k8s.io/client-go v0.17.1
 	sigs.k8s.io/sig-storage-lib-external-provisioner v4.0.2-0.20200115000635-36885abbb2bd+incompatible
+	sigs.k8s.io/yaml v1.1.0
 )

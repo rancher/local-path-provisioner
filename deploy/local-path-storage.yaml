@@ -15,7 +15,7 @@ metadata:
   name: local-path-provisioner-role
 rules:
 - apiGroups: [""]
-  resources: ["nodes", "persistentvolumeclaims"]
+  resources: ["nodes", "persistentvolumeclaims", "configmaps"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["endpoints", "persistentvolumes", "pods"]
@@ -104,10 +104,48 @@ data:
         }
   setup: |-
         #!/bin/sh
-        path=$1
-        mkdir -m 0777 -p ${path}
+        while getopts "m:s:p:" opt
+        do
+            case $opt in
+                p)
+                absolutePath=$OPTARG
+                ;;
+                s)
+                sizeInBytes=$OPTARG
+                ;;
+                m)
+                volMode=$OPTARG
+                ;;
+            esac
+        done
+
+        mkdir -m 0777 -p ${absolutePath}
   teardown: |-
         #!/bin/sh
-        path=$1
-        rm -rf ${path}
+        while getopts "m:s:p:" opt
+        do
+            case $opt in
+                p)
+                absolutePath=$OPTARG
+                ;;
+                s)
+                sizeInBytes=$OPTARG
+                ;;
+                m)
+                volMode=$OPTARG
+                ;;
+            esac
+        done
+
+        rm -rf ${absolutePath}
+  helperPod.yaml: |-
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: helper-pod
+        spec:
+          containers:
+          - name: helper-pod
+            image: busybox
+
 
