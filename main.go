@@ -19,8 +19,7 @@ import (
 )
 
 var (
-	VERSION = "0.0.1"
-
+	VERSION                = "0.0.1"
 	FlagConfigFile         = "config"
 	FlagProvisionerName    = "provisioner-name"
 	EnvProvisionerName     = "PROVISIONER_NAME"
@@ -38,6 +37,8 @@ var (
 	DefaultConfigFileKey   = "config.json"
 	DefaultConfigMapName   = "local-path-config"
 	FlagConfigMapName      = "configmap-name"
+	FlagHelperPodFile      = "helper-pod-file"
+	DefaultHelperPodFile   = "helperPod.yaml"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -101,6 +102,11 @@ func StartCmd() cli.Command {
 				EnvVar: EnvServiceAccountName,
 				Value:  DefaultServiceAccount,
 			},
+			cli.StringFlag{
+				Name:  FlagHelperPodFile,
+				Usage: "Paths to the Helper pod yaml file",
+				Value: "",
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := startDaemon(c); err != nil {
@@ -140,16 +146,16 @@ func loadConfig(kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags("", kubeconfig)
 }
 
-func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace, configMapName string) (string, error) {
+func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace, configMapName, key string) (string, error) {
 	cm, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(configMapName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
-	configFile, ok := cm.Data[DefaultConfigFileKey]
+	value, ok := cm.Data[key]
 	if !ok {
-		return "", fmt.Errorf("%v is not exist in local-path-config ConfigMap", DefaultConfigFileKey)
+		return "", fmt.Errorf("%v is not exist in local-path-config ConfigMap", key)
 	}
-	return configFile, nil
+	return value, nil
 }
 
 func startDaemon(c *cli.Context) error {
@@ -185,7 +191,7 @@ func startDaemon(c *cli.Context) error {
 	}
 	configFile := c.String(FlagConfigFile)
 	if configFile == "" {
-		configFile, err = findConfigFileFromConfigMap(kubeClient, namespace, configMapName)
+		configFile, err = findConfigFileFromConfigMap(kubeClient, namespace, configMapName, DefaultConfigFileKey)
 		if err != nil {
 			return fmt.Errorf("invalid empty flag %v and it also does not exist at ConfigMap %v/%v with err: %v", FlagConfigFile, namespace, configMapName, err)
 		}
@@ -200,7 +206,23 @@ func startDaemon(c *cli.Context) error {
 		return fmt.Errorf("invalid empty flag %v", FlagServiceAccountName)
 	}
 
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName)
+	// if helper pod file is not specified, then find the helper pod by configmap with key = helperPod.yaml
+	// if helper pod file is specified with flag FlagHelperPodFile, then load the file
+	helperPodFile := c.String(FlagHelperPodFile)
+	helperPodYaml := ""
+	if helperPodFile == "" {
+		helperPodYaml, err = findConfigFileFromConfigMap(kubeClient, namespace, configMapName, DefaultHelperPodFile)
+		if err != nil {
+			return fmt.Errorf("invalid empty flag %v and it also does not exist at ConfigMap %v/%v with err: %v", FlagConfigFile, namespace, configMapName, err)
+		}
+	} else {
+		helperPodYaml, err = loadFile(helperPodFile)
+		if err != nil {
+			return fmt.Errorf("could not open file %v with err: %v", helperPodFile, err)
+		}
+	}
+
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
 	if err != nil {
 		return err
 	}

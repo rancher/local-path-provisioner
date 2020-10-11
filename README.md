@@ -132,12 +132,49 @@ data:
         }
   setup: |-
         #!/bin/sh
-        path=$1
-        mkdir -m 0777 -p ${path}
+        while getopts "m:s:p:" opt
+        do
+            case $opt in
+                p)
+                absolutePath=$OPTARG
+                ;;
+                s)
+                sizeInBytes=$OPTARG
+                ;;
+                m)
+                volMode=$OPTARG
+                ;;
+            esac
+        done
+
+        mkdir -m 0777 -p ${absolutePath}
   teardown: |-
         #!/bin/sh
-        path=$1
-        rm -rf ${path}
+        while getopts "m:s:p:" opt
+        do
+            case $opt in
+                p)
+                absolutePath=$OPTARG
+                ;;
+                s)
+                sizeInBytes=$OPTARG
+                ;;
+                m)
+                volMode=$OPTARG
+                ;;
+            esac
+        done
+
+        rm -rf ${absolutePath}
+  helperPod.yaml: |-
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: helper-pod
+        spec:
+          containers:
+          - name: helper-pod
+            image: busybox
 
 ```
 
@@ -158,11 +195,16 @@ The configuration must obey following rules:
 3. No duplicate paths allowed for one node.
 4. No duplicate node allowed.
 
-#### Scripts `setup` and `teardown`
+#### Scripts `setup` and `teardown` and `helperPod.yaml`
 
 The script `setup` will be executed before the volume is created, to prepare the directory on the node for the volume.
 
 The script `teardown` will be executed after the volume is deleted, to cleanup the directory on the node for the volume.
+
+The yaml file `helperPod.yaml` will be created by local-path-storage to execute `setup` or `teardown` script with three paramemters  `-p <path> -s <size> -m <mode>` :
+* path: the absolute path provisioned on the node
+- size: pvc.Spec.resources.requests.storage in bytes
+* mode: pvc.Spec.VolumeMode
 
 #### Reloading
 
@@ -198,7 +240,7 @@ git clone https://github.com/rancher/local-path-provisioner.git
 cd local-path-provisioner
 go build
 kubectl apply -f debug/config.yaml
-./local-path-provisioner --debug start --namespace=local-path-storage
+./local-path-provisioner --debug start --service-account-name=default
 ```
 
 ### example
