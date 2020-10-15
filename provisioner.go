@@ -213,7 +213,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 	}
 
 	fs := v1.PersistentVolumeFilesystem
-	hostPathType := v1.HostPathDirectory
+	hostPathType := v1.HostPathDirectoryOrCreate
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
