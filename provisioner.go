@@ -13,6 +13,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	uuid "github.com/satori/go.uuid"
 	v1 "k8s.io/api/core/v1"
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -386,6 +387,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 	}
 	helperPod := p.helperPod.DeepCopy()
 
+	// use different name for helper pods
+	// https://github.com/rancher/local-path-provisioner/issues/154
+	helperPod.Name = helperPod.Name + "-" + uuid.NewV4().String()[:8]
 	helperPod.Namespace = p.namespace
 	helperPod.Spec.NodeName = node
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
