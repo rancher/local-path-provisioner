@@ -40,6 +40,44 @@ Check and follow the provisioner log using:
 $ kubectl -n local-path-storage logs -f -l app=local-path-provisioner
 ```
 
+### Air Gap Installation
+
+To be able to run the provisioner in an air gapped environment, you will need to provide a registry url, and a registry secret if needed.
+
+1. Create local-path-provisioner namespace
+
+```
+kubectl create namespace local-path-provisioner
+```
+2. If private registry needs authentication, create docker-registry secret in the local-path-provisioner namespace
+
+```
+kubectl -n local-path-provisioner create secret docker-registry <SECRET_NAME> --docker-server=<REGISTRY_URL> --docker-username=<REGISTRY_USER> --docker-password=<REGISTRY_PASSWORD>
+```
+
+3. Download the manifest file (https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage-airgapped.yaml) and apply the following modifications:
+
+
+```
+image: <REGISTRY_URL>/rancher/local-path-provisioner:v0.0.18
+```
+
+```
+command:
+        - local-path-provisioner
+        - --debug
+        - start
+        - --helper-image
+        - <REGISTRY_URL>/busybox
+        - --service-account-name
+        - local-path-provisioner-service-account
+        - --config
+        - /etc/config/config.json
+```
+
+4. Deploy local-path-provisioner manifest file ```kubectl apply -f local-path-provisioner-airgapped.yaml```
+
+
 ## Usage
 
 Create a `hostPath` backend Persistent Volume and a pod uses it:

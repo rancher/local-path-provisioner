@@ -8,6 +8,8 @@ kind: ServiceAccount
 metadata:
   name: local-path-provisioner-service-account
   namespace: local-path-storage
+imagePullSecrets:
+  - name: registry-secret
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -15,7 +17,7 @@ metadata:
   name: local-path-provisioner-role
 rules:
 - apiGroups: [""]
-  resources: ["nodes", "persistentvolumeclaims", "configmaps"]
+  resources: ["nodes", "persistentvolumeclaims"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["endpoints", "persistentvolumes", "pods"]
@@ -58,12 +60,14 @@ spec:
       serviceAccountName: local-path-provisioner-service-account
       containers:
       - name: local-path-provisioner
-        image: rancher/local-path-provisioner:v0.0.18
+        image: <REGISTRY_URL>/rancher/local-path-provisioner:v0.0.18
         imagePullPolicy: IfNotPresent
         command:
         - local-path-provisioner
         - --debug
         - start
+        - --helper-image
+        - <REGISTRY_URL>/busybox
         - --service-account-name
         - local-path-provisioner-service-account
         - --config
@@ -106,48 +110,10 @@ data:
         }
   setup: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        mkdir -m 0777 -p ${absolutePath}
+        path=$1
+        mkdir -m 0777 -p ${path}
   teardown: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        rm -rf ${absolutePath}
-  helperPod.yaml: |-
-        apiVersion: v1
-        kind: Pod
-        metadata:
-          name: helper-pod
-        spec:
-          containers:
-          - name: helper-pod
-            image: busybox
-
+        path=$1
+        rm -rf ${path}
 
