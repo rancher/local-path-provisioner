@@ -2,8 +2,8 @@
 this is an example to enable quota for xfs 
 
 # Usage
-> 1. build a helper image using the sample dockerfile to replace helper image xxx/storage-xfs-quota:v0.1 at configmap(helperPod.yaml) of debug.yaml.
-> 2. use the sample setup and teardown script at configmap of debug.yaml
+> 1. build a helper image using the sample dockerfile to replace helper image xxx/storage-xfs-quota:v0.1 at configmap(config/helper-pod.yaml).
+> 2. use the sample setup and teardown scripts contained within the kustomization.
 
 Notice:
 > 1. make sure the path at nodePathMap is the mountpoint of xfs which enables pquota
@@ -13,6 +13,7 @@ Notice:
 > git clone https://github.com/rancher/local-path-provisioner.git
 > cd local-path-provisioner
 > go build
-> kubectl apply -f debug.yaml
+> kustomize build examples/quota | kubectl apply -f -
+> kubectl delete -n local-path-storage deploy local-path-provisioner
 > ./local-path-provisioner --debug start --namespace=local-path-storage
 ```

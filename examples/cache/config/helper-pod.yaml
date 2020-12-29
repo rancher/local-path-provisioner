@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  containers:
+  - name: helper
+    image: quay.io/buildah/stable:v1.18.0
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      privileged: true
+      hostPID: true
+    volumeMounts:
+    - name: data
+      mountPropagation: Bidirectional

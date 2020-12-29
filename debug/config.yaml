@@ -39,41 +39,11 @@ data:
         }
   setup: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        mkdir -m 0777 -p ${absolutePath}
+        mkdir -m 0777 -p "$VOL_DIR"
   teardown: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        rm -rf ${absolutePath}
-  helperPod.yaml: |-
+        rm -rf "$VOL_DIR"
+  helper-pod.yaml: |-
         apiVersion: v1
         kind: Pod
         metadata:

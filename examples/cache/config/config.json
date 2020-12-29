@@ -1,0 +1,16 @@
+{
+  "nodePathMap": [
+    {
+      "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+      "paths": ["/data/example-cache-storage"]
+    },
+    {
+    	  "node": "minikube",
+      "paths": ["/data/example-cache-storage"]
+    },
+    {
+    	  "node": "kind-control-plane",
+      "paths": ["/var/opt/example-cache-storage"]
+    }
+  ]
+}

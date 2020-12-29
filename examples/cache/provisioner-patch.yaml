@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-path-provisioner
+  namespace: local-path-storage
+spec:
+  template:
+    spec:
+      containers:
+      - name: local-path-provisioner
+        env:
+        - name: CONFIGMAP_NAME
+          value: example-cache-local-path-config
+        - name: SERVICE_ACCOUNT_NAME
+          value: example-cache-local-path-provisioner-service-account
+        - name: PROVISIONER_NAME
+          value: storage.example.org/cache
+        - name: PVC_ANNOTATION
+          value: storage.example.org
+        - name: PVC_ANNOTATION_REQUIRED
+          value: storage.example.org/cache-name
+        - name: HELPER_POD_TIMEOUT
+          value: "2m"

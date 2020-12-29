@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -19,26 +21,34 @@ import (
 )
 
 var (
-	VERSION                = "0.0.1"
-	FlagConfigFile         = "config"
-	FlagProvisionerName    = "provisioner-name"
-	EnvProvisionerName     = "PROVISIONER_NAME"
-	DefaultProvisionerName = "rancher.io/local-path"
-	FlagNamespace          = "namespace"
-	EnvNamespace           = "POD_NAMESPACE"
-	DefaultNamespace       = "local-path-storage"
-	FlagHelperImage        = "helper-image"
-	EnvHelperImage         = "HELPER_IMAGE"
-	DefaultHelperImage     = "rancher/library-busybox:1.31.1"
-	FlagServiceAccountName = "service-account-name"
-	DefaultServiceAccount  = "local-path-provisioner-service-account"
-	EnvServiceAccountName  = "SERVICE_ACCOUNT_NAME"
-	FlagKubeconfig         = "kubeconfig"
-	DefaultConfigFileKey   = "config.json"
-	DefaultConfigMapName   = "local-path-config"
-	FlagConfigMapName      = "configmap-name"
-	FlagHelperPodFile      = "helper-pod-file"
-	DefaultHelperPodFile   = "helperPod.yaml"
+	VERSION                   = "0.0.1"
+	FlagConfigFile            = "config"
+	FlagProvisionerName       = "provisioner-name"
+	EnvProvisionerName        = "PROVISIONER_NAME"
+	DefaultProvisionerName    = "rancher.io/local-path"
+	FlagNamespace             = "namespace"
+	EnvNamespace              = "POD_NAMESPACE"
+	DefaultNamespace          = "local-path-storage"
+	FlagHelperImage           = "helper-image"
+	EnvHelperImage            = "HELPER_IMAGE"
+	DefaultHelperImage        = "rancher/library-busybox:1.31.1"
+	FlagServiceAccountName    = "service-account-name"
+	DefaultServiceAccount     = "local-path-provisioner-service-account"
+	EnvServiceAccountName     = "SERVICE_ACCOUNT_NAME"
+	FlagKubeconfig            = "kubeconfig"
+	DefaultConfigFileKey      = "config.json"
+	DefaultConfigMapName      = "local-path-config"
+	FlagConfigMapName         = "configmap-name"
+	EnvConfigMapName          = "CONFIGMAP_NAME"
+	FlagHelperPodFile         = "helper-pod-file"
+	DefaultHelperPodFile      = "helper-pod.yaml"
+	EnvHelperPodFile          = "HELPER_POD_FILE"
+	FlagHelperPodTimeout      = "helper-pod-timeout"
+	EnvHelperPodTimeout       = "HELPER_POD_TIMEOUT"
+	FlagPVCAnnotation         = "pvc-annotation"
+	EnvPVCAnnotation          = "PVC_ANNOTATION"
+	FlagPVCAnnotationRequired = "pvc-annotation-required"
+	EnvPVCAnnotationRequired  = "PVC_ANNOTATION_REQUIRED"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -50,12 +60,15 @@ func onUsageError(c *cli.Context, err error, isSubcommand bool) error {
 }
 
 func RegisterShutdownChannel(done chan struct{}) {
-	sigs := make(chan os.Signal, 1)
+	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
-		logrus.Infof("Receive %v to exit", sig)
+		logrus.Infof("Received %v signal - terminating", sig)
 		close(done)
+		<-sigs
+		logrus.Info("Received 2nd termination signal - exiting forcefully")
+		os.Exit(254)
 	}()
 }
 
@@ -81,20 +94,15 @@ func StartCmd() cli.Command {
 				Value:  DefaultNamespace,
 			},
 			cli.StringFlag{
-				Name:   FlagHelperImage,
-				Usage:  "Required. The helper image used for create/delete directories on the host",
-				EnvVar: EnvHelperImage,
-				Value:  DefaultHelperImage,
-			},
-			cli.StringFlag{
 				Name:  FlagKubeconfig,
 				Usage: "Paths to a kubeconfig. Only required when it is out-of-cluster.",
 				Value: "",
 			},
 			cli.StringFlag{
-				Name:  FlagConfigMapName,
-				Usage: "Required. Specify configmap name.",
-				Value: DefaultConfigMapName,
+				Name:   FlagConfigMapName,
+				Usage:  "Required. Specify configmap name.",
+				EnvVar: EnvConfigMapName,
+				Value:  DefaultConfigMapName,
 			},
 			cli.StringFlag{
 				Name:   FlagServiceAccountName,
@@ -103,9 +111,28 @@ func StartCmd() cli.Command {
 				Value:  DefaultServiceAccount,
 			},
 			cli.StringFlag{
-				Name:  FlagHelperPodFile,
-				Usage: "Paths to the Helper pod yaml file",
-				Value: "",
+				Name:   FlagHelperPodFile,
+				Usage:  "Paths to the Helper pod yaml file",
+				EnvVar: EnvHelperPodFile,
+				Value:  "",
+			},
+			cli.StringFlag{
+				Name:   FlagHelperPodTimeout,
+				Usage:  "Helper pod command execution timeout",
+				EnvVar: EnvHelperPodTimeout,
+				Value:  "2m",
+			},
+			cli.StringFlag{
+				Name:   FlagPVCAnnotation,
+				Usage:  "A PersistentVolumeClaim annotation or prefix passed through to the helper pod as env vars (PVC_ANNOTATION[_<ANNOTATION_PATH_SUFFIX>]=<ANNOTATION_VALUE>)",
+				EnvVar: EnvPVCAnnotation,
+				Value:  "",
+			},
+			cli.StringFlag{
+				Name:   FlagPVCAnnotationRequired,
+				Usage:  "Annotation that must be specified on PersistentVolumeClaims (multiple comma-separated)",
+				EnvVar: EnvPVCAnnotationRequired,
+				Value:  "",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -196,17 +223,19 @@ func startDaemon(c *cli.Context) error {
 			return fmt.Errorf("invalid empty flag %v and it also does not exist at ConfigMap %v/%v with err: %v", FlagConfigFile, namespace, configMapName, err)
 		}
 	}
-	helperImage := c.String(FlagHelperImage)
-	if helperImage == "" {
-		return fmt.Errorf("invalid empty flag %v", FlagHelperImage)
-	}
-
 	serviceAccountName := c.String(FlagServiceAccountName)
 	if serviceAccountName == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagServiceAccountName)
 	}
 
-	// if helper pod file is not specified, then find the helper pod by configmap with key = helperPod.yaml
+	pvcAnnotation := c.String(FlagPVCAnnotation)
+	pvcAnnotationsRequired := c.String(FlagPVCAnnotationRequired)
+	var requiredPVCAnnotations []string
+	if pvcAnnotationsRequired != "" {
+		requiredPVCAnnotations = strings.Split(pvcAnnotationsRequired, ",")
+	}
+
+	// if helper pod file is not specified, then find the helper pod by configmap with key = helper-pod.yaml
 	// if helper pod file is specified with flag FlagHelperPodFile, then load the file
 	helperPodFile := c.String(FlagHelperPodFile)
 	helperPodYaml := ""
@@ -221,8 +250,13 @@ func startDaemon(c *cli.Context) error {
 			return fmt.Errorf("could not open file %v with err: %v", helperPodFile, err)
 		}
 	}
+	helperPodTimeoutStr := c.String(FlagHelperPodTimeout)
+	helperPodTimeout, err := time.ParseDuration(helperPodTimeoutStr)
+	if err != nil {
+		return fmt.Errorf("invalid %s option provided: %s", FlagHelperPodTimeout, err)
+	}
 
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, configMapName, serviceAccountName, helperPodYaml, helperPodTimeout, pvcAnnotation, requiredPVCAnnotations)
 	if err != nil {
 		return err
 	}

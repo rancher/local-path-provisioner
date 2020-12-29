@@ -1,0 +1,6 @@
+- op: replace
+  path: /metadata/name
+  value: example-cache
+- op: replace
+  path: /provisioner
+  value: storage.example.org/cache

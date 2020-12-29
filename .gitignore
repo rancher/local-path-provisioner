@@ -6,3 +6,6 @@
 .idea
 .vscode/
 Dockerfile.dapper[0-9]*
+local-path-provisioner
+/examples/cache/testmount
+
