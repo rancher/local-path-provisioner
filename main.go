@@ -231,6 +231,7 @@ func startDaemon(c *cli.Context) error {
 		provisionerName,
 		provisioner,
 		serverVersion.GitVersion,
+		pvController.LeaderElection(false),
 	)
 	logrus.Debug("Provisioner started")
 	pc.Run(stopCh)
