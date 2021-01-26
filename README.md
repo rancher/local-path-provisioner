@@ -28,6 +28,11 @@ In this setup, the directory `/opt/local-path-provisioner` will be used across a
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
 
+Or, use `kustomize` to deploy.
+```
+kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=master" | kubectl apply -f -
+```
+
 After installation, you should see something like the following:
 ```
 $ kubectl -n local-path-storage get pod
@@ -43,10 +48,14 @@ $ kubectl -n local-path-storage logs -f -l app=local-path-provisioner
 ## Usage
 
 Create a `hostPath` backend Persistent Volume and a pod uses it:
-
 ```
-kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc.yaml
-kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc/pvc.yaml
+kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod/pod.yaml
+```
+
+Or, use `kustomize` to deploy them.
+```
+kustomize build "github.com/rancher/local-path-provisioner/examples/pod?ref=master" | kubectl apply -f -
 ```
 
 You should see the PV has been created:
@@ -77,12 +86,12 @@ kubectl exec volume-test -- sh -c "echo local-path-test > /data/test"
 
 Now delete the pod using
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod/pod.yaml
 ```
 
 After confirm that the pod is gone, recreated the pod using
 ```
-kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod/pod.yaml
 ```
 
 Check the volume content:
@@ -93,8 +102,13 @@ local-path-test
 
 Delete the pod and pvc
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc/pvc.yaml
+```
+
+Or, use `kustomize` to delete them.
+```
+kustomize build "github.com/rancher/local-path-provisioner/examples/pod?ref=master" | kubectl delete -f -
 ```
 
 The volume content stored on the node will be automatically cleaned up. You can check the log of `local-path-provisioner-xxx` for details.
