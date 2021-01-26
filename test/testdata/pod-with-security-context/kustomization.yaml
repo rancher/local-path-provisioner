@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../../deploy
+- ../../../examples/pod-with-security-context
+commonLabels:
+  app: local-path-provisioner
+images:
+- name: rancher/local-path-provisioner
+  newTag: dev

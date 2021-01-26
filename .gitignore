@@ -5,3 +5,4 @@
 *.swp
 .idea
 .vscode/
+Dockerfile.dapper[0-9]*

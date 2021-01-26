@@ -11,6 +11,7 @@ steps:
   image: rancher/dapper:v0.4.1
   commands:
   - dapper ci
+  - dapper e2e-test
   volumes:
   - name: docker
     path: /var/run/docker.sock

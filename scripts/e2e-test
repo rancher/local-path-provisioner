@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+cd $(dirname $0)/..
+
+if [ ! -f "./bin/latest_image" ]; then
+  echo "latest_image not found" > /dev/stderr
+  exit 1
+fi
+
+image=$(<./bin/latest_image tr -d '\n')
+echo "$image"
+
+echo Running tests
+
+TEST_IMAGE="$image" go test -cover -v --tags=e2e ./test/...
