@@ -35,6 +35,10 @@ const (
 	helperScriptDir     = "/script"
 	helperDataVolName   = "data"
 	helperScriptVolName = "script"
+
+	envVolDir  = "VOL_DIR"
+	envVolMode = "VOL_MODE"
+	envVolSize = "VOL_SIZE_BYTES"
 )
 
 var (
@@ -403,6 +407,11 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		// it covers the `/` case
 		return fmt.Errorf("invalid path %v for %v: cannot find parent dir or volume dir or parent dir is relative", action, o.Path)
 	}
+	env := []v1.EnvVar{
+		{Name: envVolDir, Value: filepath.Join(parentDir, volumeDir)},
+		{Name: envVolMode, Value: string(o.Mode)},
+		{Name: envVolSize, Value: strconv.FormatInt(o.SizeInBytes, 10)},
+	}
 
 	// use different name for helper pods
 	// https://github.com/rancher/local-path-provisioner/issues/154
@@ -417,6 +426,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
 	helperPod.Spec.Volumes = append(helperPod.Spec.Volumes, lpvVolumes...)
 	helperPod.Spec.Containers[0].Command = cmd
+	helperPod.Spec.Containers[0].Env = append(helperPod.Spec.Containers[0].Env, env...)
 	helperPod.Spec.Containers[0].Args = []string{"-p", filepath.Join(parentDir, volumeDir),
 		"-s", strconv.FormatInt(o.SizeInBytes, 10),
 		"-m", string(o.Mode)}
