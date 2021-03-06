@@ -33,5 +33,8 @@ func loadHelperPodFile(helperPodYaml string) (*v1.Pod, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid unmarshal the helper pod with helperPodJson: %v", string(helperPodJSON))
 	}
+	if len(p.Spec.Containers) == 0 {
+		return nil, fmt.Errorf("helper pod template does not specify any container")
+	}
 	return &p, nil
 }
