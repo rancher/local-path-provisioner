@@ -1,22 +1,7 @@
 #!/bin/sh
 
-while getopts "m:s:p:" opt
-do
-    case $opt in
-        p)
-        absolutePath=$OPTARG
-        ;;
-        s)
-        sizeInBytes=$OPTARG
-        ;;
-        m)
-        volMode=$OPTARG
-        ;;
-    esac
-done
-
-xfsPath=$(dirname "$absolutePath")
-pvcName=$(basename "$absolutePath")
+xfsPath=$(dirname "$VOL_DIR")
+pvcName=$(basename "$VOL_DIR")
 
 # support xfs quota
 type=`stat -f -c %T ${xfsPath}`
@@ -26,10 +11,10 @@ if [ ${type} == 'xfs' ]; then
     xfs_quota -x -c "limit -p bhard=0 ${pvcName}" ${xfsPath}
 fi
 
-rm -rf ${absolutePath}
+rm -rf "$VOL_DIR"
+
 if [ ${type} == 'xfs' ]; then
     echo "$(sed "/${pvcName}/d" /etc/projects)" >  /etc/projects
     echo "$(sed "/${pvcName}/d" /etc/projid)" >  /etc/projid
     xfs_quota -x -c "report -pbih" ${xfsPath}
 fi
-

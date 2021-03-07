@@ -119,7 +119,7 @@ Now you've verified that the provisioner works as expected.
 
 ### Customize the ConfigMap
 
-The configuration of the provisioner is a json file `config.json` and two bash scripts `setup` and `teardown`, stored in the a config map, e.g.:
+The configuration of the provisioner is a json file `config.json`, a Pod template `helper-pod.yaml` and two bash scripts `setup` and `teardown`, e.g.:
 ```
 kind: ConfigMap
 apiVersion: v1
@@ -146,41 +146,13 @@ data:
         }
   setup: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        mkdir -m 0777 -p ${absolutePath}
+        set -eu
+        mkdir -m 0777 -p "$VOL_DIR"
   teardown: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        rm -rf ${absolutePath}
-  helperPod.yaml: |-
+        set -eu
+        rm -rf "$VOL_DIR"
+  helper-pod.yaml: |-
         apiVersion: v1
         kind: Pod
         metadata:
@@ -209,16 +181,26 @@ The configuration must obey following rules:
 3. No duplicate paths allowed for one node.
 4. No duplicate node allowed.
 
-#### Scripts `setup` and `teardown` and `helperPod.yaml`
+#### Scripts `setup` and `teardown` and the `helper-pod.yaml` template
 
-The script `setup` will be executed before the volume is created, to prepare the directory on the node for the volume.
+* The `setup` script is run before the volume is created, to prepare the volume directory on the node.
+* The `teardown` script is run after the volume is deleted, to cleanup the volume directory on the node.
+* The `helper-pod.yaml` template is used to create a helper Pod that runs the `setup` or `teardown` script.
 
-The script `teardown` will be executed after the volume is deleted, to cleanup the directory on the node for the volume.
+The scripts receive their input as environment variables:
 
-The yaml file `helperPod.yaml` will be created by local-path-storage to execute `setup` or `teardown` script with three paramemters  `-p <path> -s <size> -m <mode>` :
-* path: the absolute path provisioned on the node
-- size: pvc.Spec.resources.requests.storage in bytes
-* mode: pvc.Spec.VolumeMode
+| Environment variable | Description |
+| -------------------- | ----------- |
+| `VOL_DIR` | Volume directory that should be created or removed. |
+| `VOL_NAME` | Name of the PersistentVolume. |
+| `VOL_Mode` | The PersistentVolume mode (`Block` or `Filesystem`). |
+| `VOL_SIZE_BYTES` | Requested volume size in bytes. |
+| `PVC_NAME` | Name of the PersistentVolumeClaim. |
+| `PVC_NAMESPACE` | Namespace of the PersistentVolumeClaim. |
+| `PVC_ANNOTATION` | Value of the PersistentVolumeClaim annotation specified by the manager's `--pvc-annotation` option. |
+| `PVC_ANNOTATION_{SUFFIX}` | Value of the PersistentVolumeClaim annotation with the prefix specified by the manager's `--pvc-annotation` option. The `SUFFIX` is the normalized path within the annotation name after the `/`. E.g. if `local-path-provisioner` is run with `--pvc-annotation=storage.example.org` the PVC annotation `storage.example.org/cache-name` is passed through to the Pod as env var `PVC_ANNOTATION_CACHE_NAME`. If the helper Pod requires such an annotation `local-path-provisioner` can be run with e.g. `--pvc-annotation-required=storage.example.org/cache-name`. |
+
+Additional environment variables and defaults for the optional `PVC_ANNOTATION*` can be specified within the helper Pod template.
 
 #### Reloading
 

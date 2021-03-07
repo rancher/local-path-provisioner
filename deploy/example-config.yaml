@@ -23,41 +23,13 @@ data:
     }
   setup: |-
     #!/bin/sh
-    while getopts "m:s:p:" opt
-    do
-        case $opt in
-            p)
-            absolutePath=$OPTARG
-            ;;
-            s)
-            sizeInBytes=$OPTARG
-            ;;
-            m)
-            volMode=$OPTARG
-            ;;
-        esac
-    done
-
-    mkdir -m 0777 -p ${absolutePath}
+    set -eu
+    mkdir -m 0777 -p "$VOL_DIR"
   teardown: |-
     #!/bin/sh
-    while getopts "m:s:p:" opt
-    do
-        case $opt in
-            p)
-            absolutePath=$OPTARG
-            ;;
-            s)
-            sizeInBytes=$OPTARG
-            ;;
-            m)
-            volMode=$OPTARG
-            ;;
-        esac
-    done
-
-    rm -rf ${absolutePath}
-  helperPod.yaml: |-
+    set -eu
+    rm -rf "$VOL_DIR"
+  helper-pod.yaml: |-
     apiVersion: v1
     kind: Pod
     metadata:
@@ -66,5 +38,3 @@ data:
       containers:
       - name: helper-pod
         image: busybox
-
-

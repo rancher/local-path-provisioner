@@ -1,0 +1,51 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cached-build
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 9000
+    runAsGroup: 9000
+    fsGroup: 9000
+  containers:
+  - name: build
+    image: mgoltzsche/podman:2.2.1
+    command: ["/bin/sh"]
+    args:
+    - -c
+    - |
+        set -ex
+        mktemp -d -p $HOME
+        ([ -f $HOME/date ] || date > $HOME/date) && cat $HOME/date
+        OOMSCORE=$(cat /proc/self/oom_score_adj)
+        podman run --name build --rm --oom-score-adj "$OOMSCORE" alpine:3.12 echo hello from nested container
+    env:
+    - name: HOME
+      value: /podman
+    securityContext:
+      privileged: true
+    volumeMounts:
+    # simply cache home directory
+    - mountPath: /podman
+      name: cache
+  volumes:
+  - name: cache
+    persistentVolumeClaim:
+      claimName: build-cache
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: build-cache
+  annotations:
+    storage.example.org/cache-name: example-project
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: example-cache

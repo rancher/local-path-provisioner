@@ -1,3 +1,4 @@
 ./.dapper
 ./.cache
 ./dist
+./examples/cache/testmount
