@@ -201,6 +201,13 @@ data:
     1. If one node is listed but with `paths` set to `[]`, the provisioner will refuse to provision on this node.
     2. If more than one path was specified, the path would be chosen randomly when provisioning.
 
+`sharedFileSystemPath` allows the provisioner to use a filesystem that is mounted on all nodes at the same time.
+In this case all access modes are supported: `ReadWriteOnce`, `ReadOnlyMany` and `ReadWriteMany` for storage claims.
+
+In addition `volumeBindingMode: Immediate` can be used in  StorageClass definition.
+
+Please note that `nodePathMap` and `sharedFileSystemPath` are mutually exclusive. If `sharedFileSystemPath` is used, then `nodePathMap` must be set to `[]`.
+
 ##### Rules
 The configuration must obey following rules:
 1. `config.json` must be a valid json file.

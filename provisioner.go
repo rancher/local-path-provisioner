@@ -62,7 +62,8 @@ type NodePathMapData struct {
 }
 
 type ConfigData struct {
-	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
+	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
+	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
 }
 
 type NodePathMap struct {
@@ -70,7 +71,8 @@ type NodePathMap struct {
 }
 
 type Config struct {
-	NodePathMap map[string]*NodePathMap
+	NodePathMap          map[string]*NodePathMap
+	SharedFileSystemPath string
 }
 
 func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset,
@@ -158,6 +160,15 @@ func (p *LocalPathProvisioner) getRandomPathOnNode(node string) (string, error) 
 	}
 
 	c := p.config
+	sharedFS, err := p.isSharedFilesystem()
+	if err != nil {
+		return "", err
+	}
+	if sharedFS {
+		// we are ignoring 'node' and returning shared FS path
+		return c.SharedFileSystemPath, nil
+	}
+	// we are working with local FS
 	npMap := c.NodePathMap[node]
 	if npMap == nil {
 		npMap = c.NodePathMap[NodeDefaultNonListedNodes]
@@ -177,22 +188,57 @@ func (p *LocalPathProvisioner) getRandomPathOnNode(node string) (string, error) 
 	return path, nil
 }
 
-func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v1.PersistentVolume, error) {
-	pvc := opts.PVC
-	if pvc.Spec.Selector != nil {
-		return nil, fmt.Errorf("claim.Spec.Selector is not supported")
-	}
-	for _, accessMode := range pvc.Spec.AccessModes {
-		if accessMode != v1.ReadWriteOnce {
-			return nil, fmt.Errorf("Only support ReadWriteOnce access mode")
-		}
-	}
-	node := opts.SelectedNode
-	if opts.SelectedNode == nil {
-		return nil, fmt.Errorf("configuration error, no node was specified")
+func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
+	p.configMutex.RLock()
+	defer p.configMutex.RUnlock()
+
+	if p.config == nil {
+		return false, fmt.Errorf("no valid config available")
 	}
 
-	basePath, err := p.getRandomPathOnNode(node.Name)
+	c := p.config
+	if (c.SharedFileSystemPath != "") && (len(c.NodePathMap) != 0) {
+		return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are defined. Please make sure only one is in use")
+	}
+
+	if len(c.NodePathMap) != 0 {
+		return false, nil
+	}
+
+	if c.SharedFileSystemPath != "" {
+		return true, nil
+	}
+
+	return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are unconfigured")
+}
+
+func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v1.PersistentVolume, error) {
+	pvc := opts.PVC
+	node := opts.SelectedNode
+	sharedFS, err := p.isSharedFilesystem()
+	if err != nil {
+		return nil, err
+	}
+	if !sharedFS {
+		if pvc.Spec.Selector != nil {
+			return nil, fmt.Errorf("claim.Spec.Selector is not supported")
+		}
+		for _, accessMode := range pvc.Spec.AccessModes {
+			if accessMode != v1.ReadWriteOnce {
+				return nil, fmt.Errorf("Only support ReadWriteOnce access mode")
+			}
+		}
+		if node == nil {
+			return nil, fmt.Errorf("configuration error, no node was specified")
+		}
+	}
+
+	nodeName := ""
+	if node != nil {
+		// This clause works only with sharedFS
+		nodeName = node.Name
+	}
+	basePath, err := p.getRandomPathOnNode(nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +247,11 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
 
 	path := filepath.Join(basePath, folderName)
-	logrus.Infof("Creating volume %v at %v:%v", name, node.Name, path)
+	if nodeName == "" {
+		logrus.Infof("Creating volume %v at %v", name, path)
+	} else {
+		logrus.Infof("Creating volume %v at %v:%v", name, nodeName, path)
+	}
 
 	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volMode := string(*pvc.Spec.VolumeMode)
@@ -210,12 +260,37 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 		"/bin/sh",
 		"/script/setup",
 	}
-	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name, volMode, storage.Value()); err != nil {
+	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, nodeName, volMode, storage.Value()); err != nil {
 		return nil, err
 	}
 
 	fs := v1.PersistentVolumeFilesystem
 	hostPathType := v1.HostPathDirectoryOrCreate
+
+	var nodeAffinity *v1.VolumeNodeAffinity
+	if sharedFS {
+		// If the same filesystem is mounted across all nodes, we don't need
+		// affinity, as path is accessible from any node
+		nodeAffinity = nil
+	} else {
+		nodeAffinity = &v1.VolumeNodeAffinity{
+			Required: &v1.NodeSelector{
+				NodeSelectorTerms: []v1.NodeSelectorTerm{
+					{
+						MatchExpressions: []v1.NodeSelectorRequirement{
+							{
+								Key:      KeyNode,
+								Operator: v1.NodeSelectorOpIn,
+								Values: []string{
+									node.Name,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -233,23 +308,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 					Type: &hostPathType,
 				},
 			},
-			NodeAffinity: &v1.VolumeNodeAffinity{
-				Required: &v1.NodeSelector{
-					NodeSelectorTerms: []v1.NodeSelectorTerm{
-						{
-							MatchExpressions: []v1.NodeSelectorRequirement{
-								{
-									Key:      KeyNode,
-									Operator: v1.NodeSelectorOpIn,
-									Values: []string{
-										node.Name,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			NodeAffinity: nodeAffinity,
 		},
 	}, nil
 }
@@ -263,7 +322,11 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 		return err
 	}
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
-		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
+		if node == "" {
+			logrus.Infof("Deleting volume %v at %v", pv.Name, path)
+		} else {
+			logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
+		}
 		storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
 		volMode := string(*pv.Spec.VolumeMode)
 		cleanupCmdsForPath := []string{"/bin/sh", "/script/teardown"}
@@ -287,6 +350,18 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 		return "", "", fmt.Errorf("no HostPath set")
 	}
 	path = hostPath.Path
+
+	sharedFS, err := p.isSharedFilesystem()
+	if err != nil {
+		return "", "", err
+	}
+
+	if sharedFS {
+		// We don't have affinity and can use any node
+		return path, "", nil
+	}
+
+	// Dealing with local filesystem
 
 	nodeAffinity := pv.Spec.NodeAffinity
 	if nodeAffinity == nil {
@@ -322,7 +397,11 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 	defer func() {
 		err = errors.Wrapf(err, "failed to %v volume %v", action, name)
 	}()
-	if name == "" || path == "" || node == "" {
+	sharedFS, err := p.isSharedFilesystem()
+	if err != nil {
+		return err
+	}
+	if name == "" || path == "" || (!sharedFS && node == "") {
 		return fmt.Errorf("invalid empty name or path or node")
 	}
 	path, err = filepath.Abs(path)
@@ -395,7 +474,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 		helperPod.Name = helperPod.Name[:HelperPodNameMaxLength]
 	}
 	helperPod.Namespace = p.namespace
-	helperPod.Spec.NodeName = node
+	if node != "" {
+		helperPod.Spec.NodeName = node
+	}
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
 	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
 	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
@@ -435,7 +516,11 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 		return fmt.Errorf("create process timeout after %v seconds", CmdTimeoutCounts)
 	}
 
-	logrus.Infof("Volume %v has been %vd on %v:%v", name, action, node, path)
+	if node == "" {
+		logrus.Infof("Volume %v has been %vd on %v", name, action, path)
+	} else {
+		logrus.Infof("Volume %v has been %vd on %v:%v", name, action, node, path)
+	}
 	return nil
 }
 
@@ -478,6 +563,7 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 		err = errors.Wrapf(err, "config canonicalization failed")
 	}()
 	cfg = &Config{}
+	cfg.SharedFileSystemPath = data.SharedFileSystemPath
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
 		if cfg.NodePathMap[n.Node] != nil {
