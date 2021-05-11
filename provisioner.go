@@ -216,6 +216,12 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 
 	fs := v1.PersistentVolumeFilesystem
 	hostPathType := v1.HostPathDirectoryOrCreate
+
+	valueNode, ok := node.GetLabels()[KeyNode]
+	if !ok {
+		valueNode = node.Name
+	}
+
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -242,7 +248,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 									Key:      KeyNode,
 									Operator: v1.NodeSelectorOpIn,
 									Values: []string{
-										node.Name,
+										valueNode,
 									},
 								},
 							},
