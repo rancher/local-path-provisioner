@@ -12,4 +12,5 @@ metadata:
 provisioner: {{ template "local-path-provisioner.provisionerName" . }}
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
+allowVolumeExpansion: true
 {{- end }}
