@@ -31,6 +31,10 @@ const (
 	KeyNode = "kubernetes.io/hostname"
 
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
+
+	helperScriptDir     = "/script"
+	helperDataVolName   = "data"
+	helperScriptVolName = "script"
 )
 
 var (
@@ -204,13 +208,14 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 	logrus.Infof("Creating volume %v at %v:%v", name, node.Name, path)
 
 	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	volMode := string(*pvc.Spec.VolumeMode)
-
-	createCmdsForPath := []string{
-		"/bin/sh",
-		"/script/setup",
-	}
-	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name, volMode, storage.Value()); err != nil {
+	provisionCmd := []string{"/bin/sh", "/script/setup"}
+	if err := p.createHelperPod(ActionTypeCreate, provisionCmd, volumeOptions{
+		Name:        name,
+		Path:        path,
+		Mode:        *pvc.Spec.VolumeMode,
+		SizeInBytes: storage.Value(),
+		Node:        node.Name,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -271,9 +276,14 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
 		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
 		storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
-		volMode := string(*pv.Spec.VolumeMode)
-		cleanupCmdsForPath := []string{"/bin/sh", "/script/teardown"}
-		if err := p.createHelperPod(ActionTypeDelete, cleanupCmdsForPath, pv.Name, path, node, volMode, storage.Value()); err != nil {
+		cleanupCmd := []string{"/bin/sh", "/script/teardown"}
+		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volumeOptions{
+			Name:        pv.Name,
+			Path:        path,
+			Mode:        *pv.Spec.VolumeMode,
+			SizeInBytes: storage.Value(),
+			Node:        node,
+		}); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
@@ -324,29 +334,30 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 	return path, node, nil
 }
 
-func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []string, name, path, node, volumeMode string, sizeInBytes int64) (err error) {
+type volumeOptions struct {
+	Name        string
+	Path        string
+	Mode        v1.PersistentVolumeMode
+	SizeInBytes int64
+	Node        string
+}
+
+func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to %v volume %v", action, name)
+		err = errors.Wrapf(err, "failed to %v volume %v", action, o.Name)
 	}()
-	if name == "" || path == "" || node == "" {
+	if o.Name == "" || o.Path == "" || o.Node == "" {
 		return fmt.Errorf("invalid empty name or path or node")
 	}
-	path, err = filepath.Abs(path)
-	if err != nil {
-		return err
+	if !filepath.IsAbs(o.Path) {
+		return fmt.Errorf("volume path %s is not absolute", o.Path)
 	}
-	path = strings.TrimSuffix(path, "/")
-	parentDir, volumeDir := filepath.Split(path)
-	parentDir = strings.TrimSuffix(parentDir, "/")
-	volumeDir = strings.TrimSuffix(volumeDir, "/")
-	if parentDir == "" || volumeDir == "" {
-		// it covers the `/` case
-		return fmt.Errorf("invalid path %v for %v: cannot find parent dir or volume dir", action, path)
-	}
+	o.Path = filepath.Clean(o.Path)
+	parentDir, volumeDir := filepath.Split(o.Path)
 	hostPathType := v1.HostPathDirectoryOrCreate
 	lpvVolumes := []v1.Volume{
 		{
-			Name: "data",
+			Name: helperDataVolName,
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: parentDir,
@@ -355,7 +366,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			},
 		},
 		{
-			Name: "script",
+			Name: helperScriptVolName,
 			VolumeSource: v1.VolumeSource{
 				ConfigMap: &v1.ConfigMapVolumeSource{
 					LocalObjectReference: v1.LocalObjectReference{
@@ -375,18 +386,6 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			},
 		},
 	}
-	lpvVolumeMounts := []v1.VolumeMount{
-		{
-			Name:      "data",
-			ReadOnly:  false,
-			MountPath: parentDir,
-		},
-		{
-			Name:      "script",
-			ReadOnly:  false,
-			MountPath: "/script",
-		},
-	}
 	lpvTolerations := []v1.Toleration{
 		{
 			Operator: v1.TolerationOpExists,
@@ -394,23 +393,33 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 	}
 	helperPod := p.helperPod.DeepCopy()
 
+	scriptMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperScriptVolName, helperScriptDir)
+	scriptMount.MountPath = helperScriptDir
+	dataMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperDataVolName, parentDir)
+	parentDir = dataMount.MountPath
+	parentDir = strings.TrimSuffix(parentDir, string(filepath.Separator))
+	volumeDir = strings.TrimSuffix(volumeDir, string(filepath.Separator))
+	if parentDir == "" || volumeDir == "" || !filepath.IsAbs(parentDir) {
+		// it covers the `/` case
+		return fmt.Errorf("invalid path %v for %v: cannot find parent dir or volume dir or parent dir is relative", action, o.Path)
+	}
+
 	// use different name for helper pods
 	// https://github.com/rancher/local-path-provisioner/issues/154
-	helperPod.Name = (helperPod.Name + "-" + string(action) + "-" + name)
+	helperPod.Name = (helperPod.Name + "-" + string(action) + "-" + o.Name)
 	if len(helperPod.Name) > HelperPodNameMaxLength {
 		helperPod.Name = helperPod.Name[:HelperPodNameMaxLength]
 	}
 	helperPod.Namespace = p.namespace
-	helperPod.Spec.NodeName = node
+	helperPod.Spec.NodeName = o.Node
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
 	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
 	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
 	helperPod.Spec.Volumes = append(helperPod.Spec.Volumes, lpvVolumes...)
-	helperPod.Spec.Containers[0].VolumeMounts = append(helperPod.Spec.Containers[0].VolumeMounts, lpvVolumeMounts...)
-	helperPod.Spec.Containers[0].Command = cmdsForPath
+	helperPod.Spec.Containers[0].Command = cmd
 	helperPod.Spec.Containers[0].Args = []string{"-p", filepath.Join(parentDir, volumeDir),
-		"-s", strconv.FormatInt(sizeInBytes, 10),
-		"-m", volumeMode}
+		"-s", strconv.FormatInt(o.SizeInBytes, 10),
+		"-m", string(o.Mode)}
 
 	// If it already exists due to some previous errors, the pod will be cleaned up later automatically
 	// https://github.com/rancher/local-path-provisioner/issues/27
@@ -441,8 +450,21 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 		return fmt.Errorf("create process timeout after %v seconds", CmdTimeoutCounts)
 	}
 
-	logrus.Infof("Volume %v has been %vd on %v:%v", name, action, node, path)
+	logrus.Infof("Volume %v has been %vd on %v:%v", o.Name, action, o.Node, o.Path)
 	return nil
+}
+
+func addVolumeMount(mounts *[]v1.VolumeMount, name, mountPath string) *v1.VolumeMount {
+	for i, m := range *mounts {
+		if m.Name == name {
+			if m.MountPath == "" {
+				(*mounts)[i].MountPath = mountPath
+			}
+			return &(*mounts)[i]
+		}
+	}
+	*mounts = append(*mounts, v1.VolumeMount{Name: name, MountPath: mountPath})
+	return &(*mounts)[len(*mounts)-1]
 }
 
 func isJSONFile(configFile string) bool {
