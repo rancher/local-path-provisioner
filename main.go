@@ -50,12 +50,15 @@ func onUsageError(c *cli.Context, err error, isSubcommand bool) error {
 }
 
 func RegisterShutdownChannel(done chan struct{}) {
-	sigs := make(chan os.Signal, 1)
+	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
-		logrus.Infof("Receive %v to exit", sig)
+		logrus.Infof("Received %v signal - terminating", sig)
 		close(done)
+		<-sigs
+		logrus.Info("Received 2nd termination signal - exiting forcefully")
+		os.Exit(254)
 	}()
 }
 
