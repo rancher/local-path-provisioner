@@ -119,7 +119,7 @@ Now you've verified that the provisioner works as expected.
 
 ### Customize the ConfigMap
 
-The configuration of the provisioner is a json file `config.json` and two bash scripts `setup` and `teardown`, stored in the a config map, e.g.:
+The configuration of the provisioner is a json file `config.json`, a Pod template `helperPod.yaml` and two bash scripts `setup` and `teardown`, stored in a config map, e.g.:
 ```
 kind: ConfigMap
 apiVersion: v1
@@ -146,40 +146,12 @@ data:
         }
   setup: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        mkdir -m 0777 -p ${absolutePath}
+        set -eu
+        mkdir -m 0777 -p "$VOL_DIR"
   teardown: |-
         #!/bin/sh
-        while getopts "m:s:p:" opt
-        do
-            case $opt in
-                p)
-                absolutePath=$OPTARG
-                ;;
-                s)
-                sizeInBytes=$OPTARG
-                ;;
-                m)
-                volMode=$OPTARG
-                ;;
-            esac
-        done
-
-        rm -rf ${absolutePath}
+        set -eu
+        rm -rf "$VOL_DIR"
   helperPod.yaml: |-
         apiVersion: v1
         kind: Pod
@@ -209,16 +181,19 @@ The configuration must obey following rules:
 3. No duplicate paths allowed for one node.
 4. No duplicate node allowed.
 
-#### Scripts `setup` and `teardown` and `helperPod.yaml`
+#### Scripts `setup` and `teardown` and the `helperPod.yaml` template
 
-The script `setup` will be executed before the volume is created, to prepare the directory on the node for the volume.
+* The `setup` script is run before the volume is created, to prepare the volume directory on the node.
+* The `teardown` script is run after the volume is deleted, to cleanup the volume directory on the node.
+* The `helperPod.yaml` template is used to create a helper Pod that runs the `setup` or `teardown` script.
 
-The script `teardown` will be executed after the volume is deleted, to cleanup the directory on the node for the volume.
+The scripts receive their input as environment variables:
 
-The yaml file `helperPod.yaml` will be created by local-path-storage to execute `setup` or `teardown` script with three paramemters  `-p <path> -s <size> -m <mode>` :
-* path: the absolute path provisioned on the node
-- size: pvc.Spec.resources.requests.storage in bytes
-* mode: pvc.Spec.VolumeMode
+| Environment variable | Description |
+| -------------------- | ----------- |
+| `VOL_DIR` | Volume directory that should be created or removed. |
+| `VOL_MODE` | The PersistentVolume mode (`Block` or `Filesystem`). |
+| `VOL_SIZE_BYTES` | Requested volume size in bytes. |
 
 #### Reloading
 

@@ -1,23 +1,10 @@
 #!/bin/sh
 
-while getopts "m:s:p:" opt
-do
-    case $opt in
-        p)
-        absolutePath=$OPTARG
-        ;;
-        s)
-        sizeInBytes=$OPTARG
-        ;;
-        m)
-        volMode=$OPTARG
-        ;;
-    esac
-done
+fsPath=$(dirname "$VOL_DIR")
+pvcName=$(basename "$VOL_DIR")
+sizeInBytes="$VOL_SIZE_BYTES"
 
-xfsPath=$(dirname "$absolutePath")
-pvcName=$(basename "$absolutePath")
-mkdir -p ${absolutePath}
+mkdir -p "$VOL_DIR"
 
 # support xfs quota
 type=`stat -f -c %T ${xfsPath}`
@@ -34,7 +21,7 @@ if [ ${type} == 'xfs' ]; then
         id=$[${id}+1]
     fi
 
-    echo "${id}:${absolutePath}" >> /etc/projects
+    echo "${id}:${VOL_DIR}" >> /etc/projects
     echo "${pvcName}:${id}" >> /etc/projid
 
     xfs_quota -x -c "project -s ${pvcName}"

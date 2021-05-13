@@ -31,6 +31,10 @@ const (
 	KeyNode = "kubernetes.io/hostname"
 
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
+
+	envVolDir  = "VOL_DIR"
+	envVolMode = "VOL_MODE"
+	envVolSize = "VOL_SIZE_BYTES"
 )
 
 var (
@@ -394,6 +398,12 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 	}
 	helperPod := p.helperPod.DeepCopy()
 
+	env := []v1.EnvVar{
+		{Name: envVolDir, Value: filepath.Join(parentDir, volumeDir)},
+		{Name: envVolMode, Value: volumeMode},
+		{Name: envVolSize, Value: strconv.FormatInt(sizeInBytes, 10)},
+	}
+
 	// use different name for helper pods
 	// https://github.com/rancher/local-path-provisioner/issues/154
 	helperPod.Name = (helperPod.Name + "-" + string(action) + "-" + name)
@@ -407,6 +417,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
 	helperPod.Spec.Volumes = append(helperPod.Spec.Volumes, lpvVolumes...)
 	helperPod.Spec.Containers[0].VolumeMounts = append(helperPod.Spec.Containers[0].VolumeMounts, lpvVolumeMounts...)
+	helperPod.Spec.Containers[0].Env = append(helperPod.Spec.Containers[0].Env, env...)
 	helperPod.Spec.Containers[0].Command = cmdsForPath
 	helperPod.Spec.Containers[0].Args = []string{"-p", filepath.Join(parentDir, volumeDir),
 		"-s", strconv.FormatInt(sizeInBytes, 10),
