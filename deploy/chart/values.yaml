@@ -136,10 +136,4 @@ configmap:
     spec:
       containers:
       - name: helper-pod
-        image: busybox
-        imagePullPolicy: IfNotPresent
-
-
-
-
-
+        image: busybox:1.33.1
