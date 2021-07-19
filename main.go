@@ -29,7 +29,7 @@ var (
 	DefaultNamespace       = "local-path-storage"
 	FlagHelperImage        = "helper-image"
 	EnvHelperImage         = "HELPER_IMAGE"
-	DefaultHelperImage     = "rancher/library-busybox:1.31.1"
+	DefaultHelperImage     = "rancher/library-busybox:1.32.1"
 	FlagServiceAccountName = "service-account-name"
 	DefaultServiceAccount  = "local-path-provisioner-service-account"
 	EnvServiceAccountName  = "SERVICE_ACCOUNT_NAME"

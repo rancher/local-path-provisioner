@@ -2,6 +2,11 @@ module github.com/rancher/local-path-provisioner
 
 go 1.12
 
+replace (
+	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+	golang.org/x/crypto => golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f
+)
+
 require (
 	github.com/Sirupsen/logrus v0.11.0
 	github.com/gogo/protobuf v1.3.0 // indirect
@@ -14,7 +19,6 @@ require (
 	github.com/prometheus/client_golang v1.1.0 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/urfave/cli v1.19.1
-	golang.org/x/sys v0.0.0-20190926180325-855e68c8590b // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0 // indirect
 	k8s.io/api v0.17.1
 	k8s.io/apimachinery v0.17.1
