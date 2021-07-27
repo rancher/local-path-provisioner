@@ -8,7 +8,7 @@ platform:
 
 steps:
 - name: build
-  image: rancher/dapper:v0.4.1
+  image: rancher/dapper:v0.4.2
   commands:
   - dapper ci
   - dapper e2e-test
@@ -71,9 +71,10 @@ platform:
 
 steps:
 - name: build
-  image: rancher/dapper:v0.4.1
+  image: rancher/dapper:v0.4.2
   commands:
   - dapper ci
+#  - dapper e2e-test
   volumes:
   - name: docker
     path: /var/run/docker.sock
@@ -133,7 +134,7 @@ platform:
 
 steps:
 - name: build
-  image: rancher/dapper:v0.4.1
+  image: rancher/dapper:v0.4.2
   commands:
   - dapper ci
   volumes:

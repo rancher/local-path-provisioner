@@ -2,12 +2,12 @@
 	"linters": {
 		"disable-all": true,
 		"enable": [
+			"gofmt",
 			"govet",
-			"golint",
 			"goimports",
+			"revive",
 			"misspell",
-			"ineffassign",
-			"gofmt"
+			"ineffassign"
 		]
 	},
 	"run": {
