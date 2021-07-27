@@ -1,6 +1,6 @@
 module github.com/rancher/local-path-provisioner
 
-go 1.12
+go 1.16
 
 replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2

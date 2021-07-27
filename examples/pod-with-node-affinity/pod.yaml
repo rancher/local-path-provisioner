@@ -24,4 +24,4 @@ spec:
           - key: kubernetes.io/hostname
             operator: In
             values:
-            - yasker-lp-dev1
+            - kind-worker
