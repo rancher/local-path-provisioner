@@ -4,7 +4,7 @@ replicaCount: 1
 
 image:
   repository: rancher/local-path-provisioner
-  tag: v0.0.19
+  tag: v0.0.20
   pullPolicy: IfNotPresent
 
 helperImage:
