@@ -37,9 +37,11 @@ const (
 	helperScriptVolName = "script"
 )
 
-var (
-	CmdTimeoutCounts = 120
+const (
+	defaultCmdTimeoutSeconds = 120
+)
 
+var (
 	ConfigFileCheckInterval = 30 * time.Second
 
 	HelperPodNameMaxLength = 128
@@ -67,6 +69,8 @@ type NodePathMapData struct {
 
 type ConfigData struct {
 	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
+
+	CmdTimeoutSeconds int `json:"cmdTimeoutSeconds,omitempty"`
 }
 
 type NodePathMap struct {
@@ -74,7 +78,8 @@ type NodePathMap struct {
 }
 
 type Config struct {
-	NodePathMap map[string]*NodePathMap
+	NodePathMap       map[string]*NodePathMap
+	CmdTimeoutSeconds int
 }
 
 func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset,
@@ -437,7 +442,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	}()
 
 	completed := false
-	for i := 0; i < CmdTimeoutCounts; i++ {
+	for i := 0; i < p.config.CmdTimeoutSeconds; i++ {
 		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(helperPod.Name, metav1.GetOptions{}); err != nil {
 			return err
 		} else if pod.Status.Phase == v1.PodSucceeded {
@@ -447,7 +452,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		time.Sleep(1 * time.Second)
 	}
 	if !completed {
-		return fmt.Errorf("create process timeout after %v seconds", CmdTimeoutCounts)
+		return fmt.Errorf("create process timeout after %v seconds", p.config.CmdTimeoutSeconds)
 	}
 
 	logrus.Infof("Volume %v has been %vd on %v:%v", o.Name, action, o.Node, o.Path)
@@ -529,6 +534,11 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 			}
 			npMap.Paths[path] = struct{}{}
 		}
+	}
+	if data.CmdTimeoutSeconds > 0 {
+		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
+	} else {
+		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
 	}
 	return cfg, nil
 }
