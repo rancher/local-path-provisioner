@@ -42,7 +42,7 @@ local-path-provisioner-d744ccf98-xfcbk   1/1       Running   0          7m
 
 Check and follow the provisioner log using:
 ```
-$ kubectl -n local-path-storage logs -f -l app=local-path-provisioner
+kubectl -n local-path-storage logs -f -l app=local-path-provisioner
 ```
 
 ## Usage
