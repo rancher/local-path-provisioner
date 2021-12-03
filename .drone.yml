@@ -188,6 +188,75 @@ volumes:
 
 ---
 kind: pipeline
+name: s390x
+
+platform:
+  os: linux
+  arch: amd64
+
+# Hack needed for s390x: https://gist.github.com/colstrom/c2f359f72658aaabb44150ac20b16d7c#gistcomment-3858388
+node:
+  arch: s390x
+
+steps:
+- name: build
+  image: rancher/dapper:v0.5.8
+  commands:
+  - dapper ci
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
+
+- name: github_binary_release
+  image: rancher/drone-images:github-release-s390x
+  settings:
+    api_key:
+      from_secret: github_token
+    prerelease: true
+    checksum:
+    - sha256
+    checksum_file: CHECKSUMsum-s390x.txt
+    checksum_flatten: true
+    files:
+    - "dist/artifacts/*"
+  when:
+    instance:
+    - drone-publish.rancher.io
+    ref:
+    - refs/head/master
+    - refs/tags/*
+    event:
+    - tag
+
+- name: docker-publish
+  image: rancher/drone-images:docker-s390x
+  volumes:
+    - name: docker
+      path: /var/run/docker.sock
+  settings:
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: "rancher/local-path-provisioner"
+    tag: "${DRONE_TAG}-s390x"
+    username:
+      from_secret: docker_username
+  when:
+    instance:
+    - drone-publish.rancher.io
+    ref:
+    - refs/head/master
+    - refs/tags/*
+    event:
+    - tag
+
+volumes:
+- name: docker
+  host:
+    path: /var/run/docker.sock
+
+---
+kind: pipeline
 name: manifest
 
 platform:
@@ -206,6 +275,7 @@ steps:
       - linux/amd64
       - linux/arm64
       - linux/arm
+      - linux/s390x
     target: "rancher/local-path-provisioner:${DRONE_TAG}"
     template: "rancher/local-path-provisioner:${DRONE_TAG}-ARCH"
   when:
@@ -221,3 +291,4 @@ depends_on:
 - amd64
 - arm64
 - arm
+- s390x
