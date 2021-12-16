@@ -139,7 +139,5 @@ configmap:
         image: busybox
         imagePullPolicy: IfNotPresent
 
-
-
-
-
+# Number of provisioner worker threads to call provision/delete simultaneously.
+workerThreads: 4
