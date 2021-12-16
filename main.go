@@ -239,6 +239,8 @@ func startDaemon(c *cli.Context) error {
 		provisioner,
 		serverVersion.GitVersion,
 		pvController.LeaderElection(false),
+		pvController.FailedProvisionThreshold(0),
+		pvController.FailedDeleteThreshold(0),
 		pvController.Threadiness(c.Int(FlagWorkerThreads)),
 	)
 	logrus.Debug("Provisioner started")
