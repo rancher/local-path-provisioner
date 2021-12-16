@@ -47,6 +47,10 @@ spec:
           {{- end }}
             - --configmap-name
             - {{ .Values.configmap.name }}
+          {{- if .Values.workerThreads }}
+            - --worker-threads
+            - {{ .Values.workerThreads }}
+          {{- end }}
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config/
