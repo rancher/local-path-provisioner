@@ -39,6 +39,8 @@ var (
 	FlagConfigMapName      = "configmap-name"
 	FlagHelperPodFile      = "helper-pod-file"
 	DefaultHelperPodFile   = "helperPod.yaml"
+	FlagWorkerThreads      = "worker-threads"
+	DefaultWorkerThreads   = 4
 )
 
 func cmdNotFound(c *cli.Context, command string) {
@@ -106,6 +108,11 @@ func StartCmd() cli.Command {
 				Name:  FlagHelperPodFile,
 				Usage: "Paths to the Helper pod yaml file",
 				Value: "",
+			},
+			cli.IntFlag{
+				Name:  FlagWorkerThreads,
+				Usage: "Number of provisioner worker threads.",
+				Value: DefaultWorkerThreads,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -232,6 +239,7 @@ func startDaemon(c *cli.Context) error {
 		provisioner,
 		serverVersion.GitVersion,
 		pvController.LeaderElection(false),
+		pvController.Threadiness(c.Int(FlagWorkerThreads)),
 	)
 	logrus.Debug("Provisioner started")
 	pc.Run(stopCh)
