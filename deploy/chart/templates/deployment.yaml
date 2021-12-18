@@ -51,6 +51,14 @@ spec:
             - --worker-threads
             - {{ .Values.workerThreads }}
           {{- end }}
+          {{- if .Values.provisioningRetryCount }}
+            - --provisioning-retry-count
+            - {{ .Values.provisioningRetryCount }}
+          {{- end }}
+          {{- if .Values.deletionRetryCount }}
+            - --deletion-retry-count
+            - {{ .Values.deletionRetryCount }}
+          {{- end }}
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config/
