@@ -243,6 +243,21 @@ func startDaemon(c *cli.Context) error {
 		}
 	}
 
+	provisioningRetryCount := c.Int(FlagProvisioningRetryCount)
+	if provisioningRetryCount < 0 {
+		return fmt.Errorf("invalid negative integer flag %v", FlagProvisioningRetryCount)
+	}
+
+	deletionRetryCount := c.Int(FlagDeletionRetryCount)
+	if deletionRetryCount < 0 {
+		return fmt.Errorf("invalid negative integer flag %v", FlagDeletionRetryCount)
+	}
+
+	workerThreads := c.Int(FlagWorkerThreads)
+	if workerThreads <= 0 {
+		return fmt.Errorf("invalid zero or negative integer flag %v", FlagWorkerThreads)
+	}
+
 	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
 	if err != nil {
 		return err
@@ -253,9 +268,9 @@ func startDaemon(c *cli.Context) error {
 		provisioner,
 		serverVersion.GitVersion,
 		pvController.LeaderElection(false),
-		pvController.FailedProvisionThreshold(c.Int(FlagProvisioningRetryCount)),
-		pvController.FailedDeleteThreshold(c.Int(FlagDeletionRetryCount)),
-		pvController.Threadiness(c.Int(FlagWorkerThreads)),
+		pvController.FailedProvisionThreshold(provisioningRetryCount),
+		pvController.FailedDeleteThreshold(deletionRetryCount),
+		pvController.Threadiness(workerThreads),
 	)
 	logrus.Debug("Provisioner started")
 	pc.Run(stopCh)
