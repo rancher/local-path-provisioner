@@ -215,7 +215,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 	}
 
 	fs := v1.PersistentVolumeFilesystem
-	hostPathType := v1.HostPathDirectoryOrCreate
+	hostPathType := v1.HostPathDirectory
 
 	valueNode, ok := node.GetLabels()[KeyNode]
 	if !ok {
