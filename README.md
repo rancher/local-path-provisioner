@@ -215,7 +215,7 @@ The script `setup` will be executed before the volume is created, to prepare the
 
 The script `teardown` will be executed after the volume is deleted, to cleanup the directory on the node for the volume.
 
-The yaml file `helperPod.yaml` will be created by local-path-storage to execute `setup` or `teardown` script with three paramemters  `-p <path> -s <size> -m <mode>` :
+The yaml file `helperPod.yaml` will be created by local-path-storage to execute `setup` or `teardown` script with three parameters  `-p <path> -s <size> -m <mode>` :
 * path: the absolute path provisioned on the node
 - size: pvc.Spec.resources.requests.storage in bytes
 * mode: pvc.Spec.VolumeMode
