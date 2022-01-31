@@ -210,17 +210,18 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 		"/bin/sh",
 		"/script/setup",
 	}
-	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name, volMode, storage.Value()); err != nil {
-		return nil, err
-	}
-
-	fs := v1.PersistentVolumeFilesystem
-	hostPathType := v1.HostPathDirectoryOrCreate
 
 	valueNode, ok := node.GetLabels()[KeyNode]
 	if !ok {
 		valueNode = node.Name
 	}
+
+	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, valueNode, volMode, storage.Value()); err != nil {
+		return nil, err
+	}
+
+	fs := v1.PersistentVolumeFilesystem
+	hostPathType := v1.HostPathDirectoryOrCreate
 
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -400,6 +401,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 	if len(helperPod.Name) > HelperPodNameMaxLength {
 		helperPod.Name = helperPod.Name[:HelperPodNameMaxLength]
 	}
+
 	helperPod.Namespace = p.namespace
 	helperPod.Spec.NodeName = node
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
