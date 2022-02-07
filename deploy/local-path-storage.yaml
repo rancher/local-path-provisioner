@@ -71,8 +71,11 @@ spec:
             - --config
             - /etc/config/config.json
           resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
             limits:
-              cpu: 1
+              cpu: 250m
               memory: 256Mi
           volumeMounts:
             - name: config-volume
