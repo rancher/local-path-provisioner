@@ -31,13 +31,28 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
 - name: docker-publish
+  image: plugins/docker
+  settings:
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: "rancher/local-path-provisioner"
+    tag: "${DRONE_BRANCH}-head-amd64"
+    username:
+      from_secret: docker_username
+  when:
+    instance:
+    - drone-publish.rancher.io
+    ref:
+    - refs/head/master
+    event:
+    - push
+
+- name: docker-tagged-publish
   image: plugins/docker
   settings:
     dockerfile: package/Dockerfile
@@ -50,9 +65,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
@@ -94,13 +106,28 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
 - name: docker-publish
+  image: plugins/docker
+  settings:
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: "rancher/local-path-provisioner"
+    tag: "${DRONE_BRANCH}-head-arm64"
+    username:
+      from_secret: docker_username
+  when:
+    instance:
+    - drone-publish.rancher.io
+    ref:
+    - refs/head/master
+    event:
+    - push
+
+- name: docker-tagged-publish
   image: plugins/docker
   settings:
     dockerfile: package/Dockerfile
@@ -113,9 +140,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
@@ -156,13 +180,28 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
 - name: docker-publish
+  image: plugins/docker
+  settings:
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: "rancher/local-path-provisioner"
+    tag: "${DRONE_BRANCH}-head-arm"
+    username:
+      from_secret: docker_username
+  when:
+    instance:
+    - drone-publish.rancher.io
+    ref:
+    - refs/head/master
+    event:
+    - push
+
+- name: docker-tagged-publish
   image: plugins/docker
   settings:
     dockerfile: package/Dockerfile
@@ -175,9 +214,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
@@ -222,13 +258,31 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
 - name: docker-publish
+  image: rancher/drone-images:docker-s390x
+  volumes:
+    - name: docker
+      path: /var/run/docker.sock
+  settings:
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: "rancher/local-path-provisioner"
+    tag: "${DRONE_BRANCH}-head-s390x"
+    username:
+      from_secret: docker_username
+  when:
+    instance:
+    - drone-publish.rancher.io
+    ref:
+    - refs/head/master
+    event:
+    - push
+
+- name: docker-tagged-publish
   image: rancher/drone-images:docker-s390x
   volumes:
     - name: docker
@@ -244,9 +298,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
-    - refs/tags/*
     event:
     - tag
 
@@ -276,14 +327,33 @@ steps:
       - linux/arm64
       - linux/arm
       - linux/s390x
-    target: "rancher/local-path-provisioner:${DRONE_TAG}"
-    template: "rancher/local-path-provisioner:${DRONE_TAG}-ARCH"
+    target: "rancher/local-path-provisioner:${DRONE_BRANCH}-head"
+    template: "rancher/local-path-provisioner:${DRONE_BRANCH}-head-ARCH"
   when:
     instance:
     - drone-publish.rancher.io
     ref:
     - refs/head/master
-    - refs/tags/*
+    event:
+    - push
+
+- name: manifest-tag
+  image: plugins/manifest:1.0.2
+  settings:
+    username:
+      from_secret: docker_username
+    password:
+      from_secret: docker_password
+    platforms:
+      - linux/amd64
+      - linux/arm64
+      - linux/arm
+      - linux/s390x
+    target: "rancher/local-path-provisioner:${DRONE_TAG}"
+    template: "rancher/local-path-provisioner:${DRONE_TAG}-ARCH"
+  when:
+    instance:
+    - drone-publish.rancher.io
     event:
     - tag
 
