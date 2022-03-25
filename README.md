@@ -24,11 +24,23 @@ Kubernetes v1.12+.
 
 In this setup, the directory `/opt/local-path-provisioner` will be used across all the nodes as the path for provisioning (a.k.a, store the persistent volume data). The provisioner will be installed in `local-path-storage` namespace by default.
 
+- Stable
+```
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.21/deploy/local-path-storage.yaml
+```
+
+- Development
 ```
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
 
 Or, use `kustomize` to deploy.
+- Stable
+```
+kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=v0.0.21" | kubectl apply -f -
+```
+
+- Development
 ```
 kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=master" | kubectl apply -f -
 ```
@@ -217,6 +229,12 @@ Before uninstallation, make sure the PVs created by the provisioner have already
 
 To uninstall, execute:
 
+- Stable
+```
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.21/deploy/local-path-storage.yaml
+```
+
+- Development
 ```
 kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
