@@ -47,8 +47,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
     event:
     - push
 
@@ -122,8 +120,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
     event:
     - push
 
@@ -196,8 +192,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
     event:
     - push
 
@@ -277,8 +271,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
     event:
     - push
 
@@ -332,8 +324,6 @@ steps:
   when:
     instance:
     - drone-publish.rancher.io
-    ref:
-    - refs/head/master
     event:
     - push
 
