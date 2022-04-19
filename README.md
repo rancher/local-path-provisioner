@@ -108,7 +108,7 @@ kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provision
 
 Check the volume content:
 ```
-$ kubectl exec volume-test cat /data/test
+$ kubectl exec volume-test -- sh -c "cat /data/test"
 local-path-test
 ```
 
