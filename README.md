@@ -240,7 +240,7 @@ kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provision
 ```
 
 ## Debug
-> it providers a out-of-cluster debug env for deverlopers
+> it providers a out-of-cluster debug env for developers
 ### debug
 ```Bash
 git clone https://github.com/rancher/local-path-provisioner.git
