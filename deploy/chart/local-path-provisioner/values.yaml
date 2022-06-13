@@ -99,17 +99,6 @@ configmap:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
-  # specify the custom helper pod yaml
-  helperPod: |-
-    apiVersion: v1
-    kind: Pod
-    metadata:
-      name: helper-pod
-    spec:
-      containers:
-      - name: helper-pod
-        image: busybox
-        imagePullPolicy: IfNotPresent
 
 # Number of provisioner worker threads to call provision/delete simultaneously.
 # workerThreads: 4
