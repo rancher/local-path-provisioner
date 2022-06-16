@@ -16,10 +16,6 @@ spec:
         app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
-    {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-    {{- end }}
       serviceAccountName: {{ template "local-path-provisioner.serviceAccountName" . }}
       containers:
         - name: {{ .Chart.Name }}
