@@ -8,6 +8,12 @@ import (
 	"github.com/stretchr/testify/suite"
 	"testing"
 	"time"
+	"strings"
+)
+
+const (
+	hostPathVolumeType = "hostPath"
+	localVolumeType    = "local"
 )
 
 type PodTestSuite struct {
@@ -71,23 +77,29 @@ func TestPVCTestSuite(t *testing.T) {
 	suite.Run(t, new(PodTestSuite))
 }
 
-func (p *PodTestSuite) TestPod() {
+func (p *PodTestSuite) TestPodWithHostPathVolume() {
 	p.kustomizeDir = "pod"
 
-	runTest(p, []string{p.config.IMAGE}, "ready")
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
+func (p *PodTestSuite) TestPodWithLocalVolume() {
+	p.kustomizeDir = "pod-with-local-volume"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithNodeAffinity() {
 	p.kustomizeDir = "pod-with-node-affinity"
 
-	runTest(p, []string{p.config.IMAGE}, "ready")
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithSecurityContext() {
 	p.kustomizeDir = "pod-with-security-context"
 	kustomizeDir := testdataFile(p.kustomizeDir)
 
-	runTest(p, []string{p.config.IMAGE}, "podscheduled")
+	runTest(p, []string{p.config.IMAGE}, "podscheduled", hostPathVolumeType)
 
 	cmd := fmt.Sprintf(`kubectl get pod -l %s=%s -o=jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].reason}'`, LabelKey, LabelValue)
 
@@ -116,10 +128,10 @@ loop:
 func (p *PodTestSuite) TestPodWithSubpath() {
 	p.kustomizeDir = "pod-with-subpath"
 
-	runTest(p, []string{p.config.IMAGE}, "ready")
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
-func runTest(p *PodTestSuite, images []string, waitCondition string) {
+func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string) {
 	kustomizeDir := testdataFile(p.kustomizeDir)
 
 	var cmds []string
@@ -148,5 +160,13 @@ func runTest(p *PodTestSuite, images []string, waitCondition string) {
 			p.FailNow("", "failed to run command", cmd, err)
 			break
 		}
+	}
+
+	typeCheckCmd := fmt.Sprintf("kubectl get pv $(%s) -o jsonpath='{.spec.%s}'", "kubectl get pv -o jsonpath='{.items[0].metadata.name}'", volumeType)
+	c := createCmd(p.T(), typeCheckCmd, kustomizeDir, p.config.envs(), nil)
+	typeCheckOutput, _ := c.CombinedOutput()
+	fmt.Println(string(typeCheckOutput))
+	if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
+		p.FailNow("volume Type not correct")
 	}
 }
