@@ -8,7 +8,7 @@ Local Path Provisioner provides a way for the Kubernetes users to utilize the lo
 ## Compare to built-in Local Persistent Volume feature in Kubernetes
 
 ### Pros
-Dynamic provisioning the volume using [hostPath](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) or [local volume](https://kubernetes.io/docs/concepts/storage/volumes/#local).
+Dynamic provisioning the volume using [hostPath](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) or [local](https://kubernetes.io/docs/concepts/storage/volumes/#local).
 * Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-sigs/sig-storage-local-static-provisioner) cannot do dynamic provisioning for the local volumes.
 
 ### Cons

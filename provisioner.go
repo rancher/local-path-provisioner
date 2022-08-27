@@ -72,9 +72,8 @@ type NodePathMapData struct {
 }
 
 type ConfigData struct {
-	NodePathMap       []*NodePathMapData `json:"nodePathMap,omitempty"`
-	CmdTimeoutSeconds int                `json:"cmdTimeoutSeconds,omitempty"`
-	VolumeType        string             `json:"volumeType,omitempty"`
+	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
+	CmdTimeoutSeconds int `json:"cmdTimeoutSeconds,omitempty"`
 }
 
 type NodePathMap struct {
@@ -84,23 +83,6 @@ type NodePathMap struct {
 type Config struct {
 	NodePathMap       map[string]*NodePathMap
 	CmdTimeoutSeconds int
-	VolumeType        string
-}
-
-func (c *Config) getPathBasedByVolumeType(pv *v1.PersistentVolume) (string, error) {
-	if c.VolumeType == "host" {
-		source := pv.Spec.PersistentVolumeSource.HostPath
-		if source == nil {
-			return "", fmt.Errorf("no HostPath set")
-		}
-		return source.Path, nil
-	} else {
-		source := pv.Spec.PersistentVolumeSource.Local
-		if source == nil {
-			return "", fmt.Errorf("no Local set")
-		}
-		return source.Path, nil
-	}
 }
 
 func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset,
@@ -248,7 +230,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 	fs := v1.PersistentVolumeFilesystem
 
 	var pvs v1.PersistentVolumeSource
-	if p.config.VolumeType == "local" {
+	if val, ok := opts.PVC.GetAnnotations()["volumeType"]; ok && strings.ToLower(val) == "local" {
 		pvs = v1.PersistentVolumeSource{
 			Local: &v1.LocalVolumeSource{
 				Path: path,
@@ -335,9 +317,13 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
 
-	path, pathErr := p.config.getPathBasedByVolumeType(pv)
-	if pathErr != nil {
-		return "", "", pathErr
+	volumeSource := pv.Spec.PersistentVolumeSource
+	if volumeSource.HostPath != nil && volumeSource.Local == nil {
+		path = volumeSource.HostPath.Path
+	} else if volumeSource.Local != nil && volumeSource.HostPath == nil {
+		path = volumeSource.Local.Path
+	} else {
+		return "", "", fmt.Errorf("no path set")
 	}
 
 	nodeAffinity := pv.Spec.NodeAffinity
@@ -576,16 +562,6 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
 	} else {
 		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
-	}
-	if data.VolumeType != "" {
-		vt := strings.ToLower(data.VolumeType)
-		if vt == "host" || vt == "local" {
-			cfg.VolumeType = vt
-		} else {
-			return nil, fmt.Errorf("invalid volume type %s", vt)
-		}
-	} else {
-		cfg.VolumeType = "host"
 	}
 	return cfg, nil
 }
