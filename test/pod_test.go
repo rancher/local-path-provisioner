@@ -164,8 +164,10 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 
 	typeCheckCmd := fmt.Sprintf("kubectl get pv $(%s) -o jsonpath='{.spec.%s}'", "kubectl get pv -o jsonpath='{.items[0].metadata.name}'", volumeType)
 	c := createCmd(p.T(), typeCheckCmd, kustomizeDir, p.config.envs(), nil)
-	typeCheckOutput, _ := c.CombinedOutput()
-	fmt.Println(string(typeCheckOutput))
+	typeCheckOutput, err := c.CombinedOutput()
+	if err != nil {
+		p.FailNow("", "failed to check volume type: %v", err)
+	}
 	if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
 		p.FailNow("volume Type not correct")
 	}
