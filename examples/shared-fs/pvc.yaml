@@ -1,0 +1,21 @@
+# Plesase note, configuration of the Local Path Provisioner should be set correspondingly
+# for this to work:
+#
+#  data:
+#    config.json: |-
+#      {
+#              "sharedFileSystemPath": "/shared/fs/mounted/on/the/same/path/on/all/nodes"
+#      }
+#
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-path-rwx-example
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path
+  volumeMode: Filesystem
