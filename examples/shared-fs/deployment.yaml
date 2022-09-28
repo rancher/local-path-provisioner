@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-path-rwx-example
+  labels:
+    app: local-path-rwx-example
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: local-path-rwx-example
+  template:
+    metadata:
+      labels:
+        app: local-path-rwx-example
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: local-path-rwx-example
+      containers:
+      - name: pause
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -c
+        - 'hostname >> /data/shared.txt; sleep 3; cat /data/shared.txt; sleep infinity'
+        volumeMounts:
+        - name: volv
+          mountPath: /data
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: volv
+        persistentVolumeClaim:
+          claimName: local-path-rwx-example
