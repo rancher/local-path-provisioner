@@ -6,9 +6,14 @@ metadata:
 {{ include "local-path-provisioner.labels" . | indent 4 }}
 data:
   config.json: |-
-    {
-      "nodePathMap": {{ .Values.nodePathMap | toPrettyJson | nindent 8 }}
-    }
+    {{- $config := dict }}
+    {{- with .Values.nodePathMap }}
+    {{- $config = set $config "nodePathMap" . }}
+    {{- end }}
+    {{- with .Values.sharedFileSystemPath }}
+    {{- $config = set $config "sharedFileSystemPath" . }}
+    {{- end }}
+    {{- $config | toPrettyJson | nindent 4 }}
   setup: |-
     {{ .Values.configmap.setup | nindent 4 }}
   teardown: |-
