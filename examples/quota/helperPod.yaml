@@ -16,7 +16,17 @@ spec:
     - name: xfs-quota-projects
       subPath: projid
       mountPath: /etc/projid
+    - name: device-dir
+      mountPath: /dev
   volumes:
   - name: xfs-quota-projects
     hostPath:
-      path: /etc
+      path: /etc/projects
+      type: FileOrCreate
+  - name: xfs-quota-projid
+    hostPath:
+      path: /etc/projid
+      type: FileOrCreate
+  - name: device-dir
+    hostPath:
+      path: /dev
