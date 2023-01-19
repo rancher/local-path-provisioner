@@ -349,19 +349,19 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 		return err
 	}
 
-	nodes, err := p.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{
-		LabelSelector: KeyNode + "=" + hostname,
-	})
+	if hostname != "" {
+		nodes, err := p.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{
+			LabelSelector: KeyNode + "=" + hostname,
+		})
 
-	if err != nil {
-		return errors.Wrapf(err, "Failed to get node name from hostname %v for PV %v", hostname, pv.Name)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to get node name from hostname %v for PV %v", hostname, pv.Name)
+		}
+
+		if len(nodes.Items) == 0 {
+			return errors.New("No node with hostname " + hostname + " for PV " + pv.Name)
+		}
 	}
-
-	if len(nodes.Items) == 0 {
-		return errors.New("No node with hostname " + hostname + "for PV " + pv.Name)
-	}
-
-	node := nodes.Items[0]
 
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
 		if hostname == "" {
@@ -376,7 +376,7 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 			Path:        path,
 			Mode:        *pv.Spec.VolumeMode,
 			SizeInBytes: storage.Value(),
-			Node:        node.Name,
+			Node:        hostname,
 		}); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
