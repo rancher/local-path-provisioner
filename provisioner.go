@@ -28,8 +28,7 @@ const (
 )
 
 const (
-	KeyNode = "kubernetes.io/hostname"
-
+	KeyNode                   = "kubernetes.io/hostname"
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 
 	helperScriptDir     = "/script"
@@ -72,8 +71,8 @@ type NodePathMapData struct {
 }
 
 type ConfigData struct {
-	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
-	CmdTimeoutSeconds int `json:"cmdTimeoutSeconds,omitempty"`
+	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
+	CmdTimeoutSeconds    int                `json:"cmdTimeoutSeconds,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
 }
 
@@ -82,8 +81,8 @@ type NodePathMap struct {
 }
 
 type Config struct {
-	NodePathMap       map[string]*NodePathMap
-	CmdTimeoutSeconds int
+	NodePathMap          map[string]*NodePathMap
+	CmdTimeoutSeconds    int
 	SharedFileSystemPath string
 }
 
@@ -302,9 +301,9 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 		// affinity, as path is accessible from any node
 		nodeAffinity = nil
 	} else {
-		valueNode, ok := node.GetLabels()[KeyNode]
+		hostname, ok := node.GetLabels()[KeyNode]
 		if !ok {
-			valueNode = nodeName
+			hostname = nodeName
 		}
 		nodeAffinity = &v1.VolumeNodeAffinity{
 			Required: &v1.NodeSelector{
@@ -315,7 +314,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 								Key:      KeyNode,
 								Operator: v1.NodeSelectorOpIn,
 								Values: []string{
-									valueNode,
+									hostname,
 								},
 							},
 						},
@@ -336,7 +335,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 				v1.ResourceName(v1.ResourceStorage): pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
 			},
 			PersistentVolumeSource: pvs,
-			NodeAffinity: nodeAffinity,
+			NodeAffinity:           nodeAffinity,
 		},
 	}, nil
 }
@@ -345,15 +344,30 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
-	path, node, err := p.getPathAndNodeForPV(pv)
+	path, hostname, err := p.getPathAndHostnameForPV(pv)
 	if err != nil {
 		return err
 	}
+
+	nodes, err := p.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{
+		LabelSelector: KeyNode + "=" + hostname,
+	})
+
+	if err != nil {
+		return errors.Wrapf(err, "Failed to get node name from hostname %v for PV %v", hostname, pv.Name)
+	}
+
+	if len(nodes.Items) == 0 {
+		return errors.New("No node with hostname " + hostname + "for PV " + pv.Name)
+	}
+
+	node := nodes.Items[0]
+
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
-		if node == "" {
+		if hostname == "" {
 			logrus.Infof("Deleting volume %v at %v", pv.Name, path)
 		} else {
-			logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
+			logrus.Infof("Deleting volume %v at %v:%v", pv.Name, hostname, path)
 		}
 		storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
 		cleanupCmd := []string{"/bin/sh", "/script/teardown"}
@@ -362,7 +376,7 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 			Path:        path,
 			Mode:        *pv.Spec.VolumeMode,
 			SizeInBytes: storage.Value(),
-			Node:        node,
+			Node:        node.Name,
 		}); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
@@ -373,7 +387,7 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	return nil
 }
 
-func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (path, node string, err error) {
+func (p *LocalPathProvisioner) getPathAndHostnameForPV(pv *v1.PersistentVolume) (path, hostname string, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
@@ -408,25 +422,25 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 		return "", "", fmt.Errorf("no NodeAffinity.Required set")
 	}
 
-	node = ""
+	hostname = ""
 	for _, selectorTerm := range required.NodeSelectorTerms {
 		for _, expression := range selectorTerm.MatchExpressions {
 			if expression.Key == KeyNode && expression.Operator == v1.NodeSelectorOpIn {
 				if len(expression.Values) != 1 {
 					return "", "", fmt.Errorf("multiple values for the node affinity")
 				}
-				node = expression.Values[0]
+				hostname = expression.Values[0]
 				break
 			}
 		}
-		if node != "" {
+		if hostname != "" {
 			break
 		}
 	}
-	if node == "" {
+	if hostname == "" {
 		return "", "", fmt.Errorf("cannot find affinited node")
 	}
-	return path, node, nil
+	return path, hostname, nil
 }
 
 type volumeOptions struct {
