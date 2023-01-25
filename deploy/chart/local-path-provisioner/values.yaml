@@ -11,6 +11,8 @@ helperImage:
   repository: busybox
   tag: latest
 
+createNamespace: false
+
 defaultSettings:
   registrySecret: ~
 
