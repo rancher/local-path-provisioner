@@ -196,11 +196,6 @@ func startDaemon(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
-	serverVersion, err := kubeClient.Discovery().ServerVersion()
-	if err != nil {
-		return errors.Wrap(err, "Cannot start Provisioner: failed to get Kubernetes server version")
-	}
-
 	provisionerName := c.String(FlagProvisionerName)
 	if provisionerName == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagProvisionerName)
@@ -269,7 +264,6 @@ func startDaemon(c *cli.Context) error {
 		kubeClient,
 		provisionerName,
 		provisioner,
-		serverVersion.GitVersion,
 		pvController.LeaderElection(false),
 		pvController.FailedProvisionThreshold(provisioningRetryCount),
 		pvController.FailedDeleteThreshold(deletionRetryCount),
