@@ -19,7 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
 )
 
 type ActionType string
