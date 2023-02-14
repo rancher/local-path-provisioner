@@ -72,8 +72,8 @@ type NodePathMapData struct {
 }
 
 type ConfigData struct {
-	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
-	CmdTimeoutSeconds int `json:"cmdTimeoutSeconds,omitempty"`
+	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
+	CmdTimeoutSeconds    int                `json:"cmdTimeoutSeconds,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
 }
 
@@ -82,8 +82,8 @@ type NodePathMap struct {
 }
 
 type Config struct {
-	NodePathMap       map[string]*NodePathMap
-	CmdTimeoutSeconds int
+	NodePathMap          map[string]*NodePathMap
+	CmdTimeoutSeconds    int
 	SharedFileSystemPath string
 }
 
@@ -336,7 +336,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.ProvisionOptions) (*v
 				v1.ResourceName(v1.ResourceStorage): pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
 			},
 			PersistentVolumeSource: pvs,
-			NodeAffinity: nodeAffinity,
+			NodeAffinity:           nodeAffinity,
 		},
 	}, nil
 }
@@ -518,6 +518,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	if o.Node != "" {
 		helperPod.Spec.NodeName = o.Node
 	}
+	privileged := true
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
 	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
 	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
@@ -527,6 +528,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	helperPod.Spec.Containers[0].Args = []string{"-p", filepath.Join(parentDir, volumeDir),
 		"-s", strconv.FormatInt(o.SizeInBytes, 10),
 		"-m", string(o.Mode)}
+	helperPod.Spec.Containers[0].SecurityContext = &v1.SecurityContext{
+		Privileged: &privileged,
+	}
 
 	// If it already exists due to some previous errors, the pod will be cleaned up later automatically
 	// https://github.com/rancher/local-path-provisioner/issues/27
