@@ -155,7 +155,8 @@ data:
                         "node":"yasker-lp-dev3",
                         "paths":[]
                 }
-                ]
+                ],
+                "folderExpression":"{{.pvName}}-{{.namespace}}-{{.pvcName}}"
         }
   setup: |-
         #!/bin/sh
@@ -192,6 +193,12 @@ In this case all access modes are supported: `ReadWriteOnce`, `ReadOnlyMany` and
 In addition `volumeBindingMode: Immediate` can be used in  StorageClass definition.
 
 Please note that `nodePathMap` and `sharedFileSystemPath` are mutually exclusive. If `sharedFileSystemPath` is used, then `nodePathMap` must be set to `[]`.
+
+`folderExpression` You can customize expressions produced by folders. pvcName,namespace,pvName are now supported.
+The default expression is {{.pvName}}-{{.namespace}}-{{.pvcName}}
+
+Of course, you can also set the currently used folder name by injecting the pvc annotation `rancher.io/customFolderName` value. 
+Note that this may cause multiple pvc to use the same directory
 
 ##### Rules
 The configuration must obey following rules:
