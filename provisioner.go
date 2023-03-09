@@ -230,6 +230,7 @@ func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
 func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
 	pvc := opts.PVC
 	node := opts.SelectedNode
+	storageClass := opts.StorageClass
 	sharedFS, err := p.isSharedFilesystem()
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
@@ -253,7 +254,13 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 		// This clause works only with sharedFS
 		nodeName = node.Name
 	}
-	basePath, err := p.getRandomPathOnNode(nodeName)
+	var basePath string
+	basePath, err = p.getRandomPathOnNode(nodeName)
+	if storageClass.Parameters != nil {
+		if _, ok := storageClass.Parameters["path"]; ok {
+			basePath = storageClass.Parameters["path"]
+		}
+	}
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
