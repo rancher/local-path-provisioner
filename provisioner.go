@@ -282,20 +282,15 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	fs := v1.PersistentVolumeFilesystem
 
 	var pvs v1.PersistentVolumeSource
-	if val, ok := opts.PVC.GetAnnotations()["volumeType"]; ok && strings.ToLower(val) == "local" {
-		pvs = v1.PersistentVolumeSource{
-			Local: &v1.LocalVolumeSource{
-				Path: path,
-			},
-		}
+	if pvcVal, ok := opts.PVC.GetAnnotations()["volumeType"]; ok {
+		// volume type specified in PVC
+		pvs = createPersistentVolumeSource(pvcVal, path)
+	} else if scVal, ok := opts.StorageClass.GetAnnotations()["defaultVolumeType"]; ok {
+		// default volume type provided for storage class
+		pvs = createPersistentVolumeSource(scVal, path)
 	} else {
-		hostPathType := v1.HostPathDirectoryOrCreate
-		pvs = v1.PersistentVolumeSource{
-			HostPath: &v1.HostPathVolumeSource{
-				Path: path,
-				Type: &hostPathType,
-			},
-		}
+		// volume type unspecified, we default to hostPath
+		pvs = createPersistentVolumeSource("hostPath", path)
 	}
 
 	var nodeAffinity *v1.VolumeNodeAffinity
@@ -654,4 +649,25 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
 	}
 	return cfg, nil
+}
+
+func createPersistentVolumeSource(volumeType string, path string) v1.PersistentVolumeSource {
+	var pvs v1.PersistentVolumeSource
+	switch strings.ToLower(volumeType) {
+	case "local":
+		pvs = v1.PersistentVolumeSource{
+			Local: &v1.LocalVolumeSource{
+				Path: path,
+			},
+		}
+	default:
+		hostPathType := v1.HostPathDirectoryOrCreate
+		pvs = v1.PersistentVolumeSource{
+			HostPath: &v1.HostPathVolumeSource{
+				Path: path,
+				Type: &hostPathType,
+			},
+		}
+	}
+	return pvs
 }
