@@ -282,16 +282,17 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	fs := v1.PersistentVolumeFilesystem
 
 	var pvs v1.PersistentVolumeSource
-	if pvcVal, ok := opts.PVC.GetAnnotations()["volumeType"]; ok {
-		// volume type specified in PVC
-		pvs = createPersistentVolumeSource(pvcVal, path)
-	} else if scVal, ok := opts.StorageClass.GetAnnotations()["defaultVolumeType"]; ok {
-		// default volume type provided for storage class
-		pvs = createPersistentVolumeSource(scVal, path)
-	} else {
-		// volume type unspecified, we default to hostPath
-		pvs = createPersistentVolumeSource("hostPath", path)
+	defaultVolumeType := "hostPath"
+	if dVal, ok := opts.StorageClass.GetAnnotations()["defaultVolumeType"]; ok {
+		defaultVolumeType = dVal
 	}
+	var volumeType string
+	if val, ok := opts.PVC.GetAnnotations()["volumeType"]; ok {
+		volumeType = val
+	} else {
+		volumeType = defaultVolumeType
+	}
+	pvs = createPersistentVolumeSource(volumeType, path)
 
 	var nodeAffinity *v1.VolumeNodeAffinity
 	if sharedFS {
