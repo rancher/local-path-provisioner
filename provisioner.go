@@ -661,6 +661,14 @@ func createPersistentVolumeSource(volumeType string, path string) v1.PersistentV
 				Path: path,
 			},
 		}
+	case "hostpath":
+		hostPathType := v1.HostPathDirectoryOrCreate
+		pvs = v1.PersistentVolumeSource{
+			HostPath: &v1.HostPathVolumeSource{
+				Path: path,
+				Type: &hostPathType,
+			},
+		}
 	default:
 		hostPathType := v1.HostPathDirectoryOrCreate
 		pvs = v1.PersistentVolumeSource{
