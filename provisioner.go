@@ -292,7 +292,10 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	} else {
 		volumeType = defaultVolumeType
 	}
-	pvs = createPersistentVolumeSource(volumeType, path)
+	pvs, err = createPersistentVolumeSource(volumeType, path)
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, err
+	}
 
 	var nodeAffinity *v1.VolumeNodeAffinity
 	if sharedFS {
@@ -652,8 +655,11 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	return cfg, nil
 }
 
-func createPersistentVolumeSource(volumeType string, path string) v1.PersistentVolumeSource {
-	var pvs v1.PersistentVolumeSource
+func createPersistentVolumeSource(volumeType string, path string) (pvs v1.PersistentVolumeSource, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to create persistent volume source")
+	}()
+
 	switch strings.ToLower(volumeType) {
 	case "local":
 		pvs = v1.PersistentVolumeSource{
@@ -670,13 +676,8 @@ func createPersistentVolumeSource(volumeType string, path string) v1.PersistentV
 			},
 		}
 	default:
-		hostPathType := v1.HostPathDirectoryOrCreate
-		pvs = v1.PersistentVolumeSource{
-			HostPath: &v1.HostPathVolumeSource{
-				Path: path,
-				Type: &hostPathType,
-			},
-		}
+		return pvs, fmt.Errorf("\"%s\" is not a recognised volume type", volumeType)
 	}
-	return pvs
+
+	return pvs, nil
 }
