@@ -8,10 +8,10 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0
 	github.com/urfave/cli v1.19.1
-	k8s.io/api v0.19.1
-	k8s.io/apimachinery v0.19.1
-	k8s.io/client-go v0.19.1
-	k8s.io/klog/v2 v2.3.0
+	k8s.io/api v0.20.0
+	k8s.io/apimachinery v0.20.0
+	k8s.io/client-go v0.20.0
+	k8s.io/klog/v2 v2.4.0
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v8 v8.0.0
 	sigs.k8s.io/yaml v1.2.0
 )
@@ -26,7 +26,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
-	github.com/google/uuid v1.1.1 // indirect
+	github.com/google/uuid v1.1.2 // indirect
 	github.com/googleapis/gnostic v0.4.1 // indirect
 	github.com/hashicorp/golang-lru v0.5.1 // indirect
 	github.com/imdario/mergo v0.3.5 // indirect
@@ -53,7 +53,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
-	k8s.io/kube-openapi v0.0.0-20200805222855-6aeccd4b50c6 // indirect
-	k8s.io/utils v0.0.0-20200729134348-d5654de09c73 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.0.1 // indirect
+	k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd // indirect
+	k8s.io/utils v0.0.0-20201110183641-67b214c5f920 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.0.2 // indirect
 )
