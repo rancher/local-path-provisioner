@@ -152,7 +152,14 @@ platform:
   os: linux
   arch: arm
 
+# ad-hoc fix:
+# disable the use of upstream images https://github.com/rancherlabs/eio/issues/1493
+clone:
+  disable: true
+
 steps:
+- name: clone
+  image: drone/git:linux-arm
 - name: build
   image: rancher/dapper:v0.4.2
   commands:
