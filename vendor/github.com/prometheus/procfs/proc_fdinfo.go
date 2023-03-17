@@ -16,17 +16,18 @@ package procfs
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"regexp"
 
 	"github.com/prometheus/procfs/internal/util"
 )
 
-// Regexp variables
 var (
-	rPos     = regexp.MustCompile(`^pos:\s+(\d+)$`)
-	rFlags   = regexp.MustCompile(`^flags:\s+(\d+)$`)
-	rMntID   = regexp.MustCompile(`^mnt_id:\s+(\d+)$`)
-	rInotify = regexp.MustCompile(`^inotify`)
+	rPos          = regexp.MustCompile(`^pos:\s+(\d+)$`)
+	rFlags        = regexp.MustCompile(`^flags:\s+(\d+)$`)
+	rMntID        = regexp.MustCompile(`^mnt_id:\s+(\d+)$`)
+	rInotify      = regexp.MustCompile(`^inotify`)
+	rInotifyParts = regexp.MustCompile(`^inotify\s+wd:([0-9a-f]+)\s+ino:([0-9a-f]+)\s+sdev:([0-9a-f]+)(?:\s+mask:([0-9a-f]+))?`)
 )
 
 // ProcFDInfo contains represents file descriptor information.
@@ -39,7 +40,7 @@ type ProcFDInfo struct {
 	Flags string
 	// Mount point ID
 	MntID string
-	// List of inotify lines (structed) in the fdinfo file (kernel 3.8+ only)
+	// List of inotify lines (structured) in the fdinfo file (kernel 3.8+ only)
 	InotifyInfos []InotifyInfo
 }
 
@@ -96,15 +97,21 @@ type InotifyInfo struct {
 
 // InotifyInfo constructor. Only available on kernel 3.8+.
 func parseInotifyInfo(line string) (*InotifyInfo, error) {
-	r := regexp.MustCompile(`^inotify\s+wd:([0-9a-f]+)\s+ino:([0-9a-f]+)\s+sdev:([0-9a-f]+)\s+mask:([0-9a-f]+)`)
-	m := r.FindStringSubmatch(line)
-	i := &InotifyInfo{
-		WD:   m[1],
-		Ino:  m[2],
-		Sdev: m[3],
-		Mask: m[4],
+	m := rInotifyParts.FindStringSubmatch(line)
+	if len(m) >= 4 {
+		var mask string
+		if len(m) == 5 {
+			mask = m[4]
+		}
+		i := &InotifyInfo{
+			WD:   m[1],
+			Ino:  m[2],
+			Sdev: m[3],
+			Mask: mask,
+		}
+		return i, nil
 	}
-	return i, nil
+	return nil, fmt.Errorf("invalid inode entry: %q", line)
 }
 
 // ProcFDInfos represents a list of ProcFDInfo structs.
@@ -114,7 +121,7 @@ func (p ProcFDInfos) Len() int           { return len(p) }
 func (p ProcFDInfos) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func (p ProcFDInfos) Less(i, j int) bool { return p[i].FD < p[j].FD }
 
-// InotifyWatchLen returns the total number of inotify watches
+// InotifyWatchLen returns the total number of inotify watches.
 func (p ProcFDInfos) InotifyWatchLen() (int, error) {
 	length := 0
 	for _, f := range p {
