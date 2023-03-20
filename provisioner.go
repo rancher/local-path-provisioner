@@ -30,7 +30,8 @@ const (
 )
 
 const (
-	KeyNode = "kubernetes.io/hostname"
+	KeyNode                    = "kubernetes.io/hostname"
+	customFolderNameAnnotation = "rancher.io/customFolderName"
 
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 
@@ -45,6 +46,7 @@ const (
 
 const (
 	defaultCmdTimeoutSeconds = 120
+	defaultFolderExpression  = "{{.pvName}}-{{.namespace}}-{{.pvcName}}"
 )
 
 var (
@@ -77,6 +79,7 @@ type ConfigData struct {
 	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
 	CmdTimeoutSeconds    int                `json:"cmdTimeoutSeconds,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
+	FolderExpression     string             `json:"folderExpression,omitempty"`
 }
 
 type NodePathMap struct {
@@ -87,6 +90,7 @@ type Config struct {
 	NodePathMap          map[string]*NodePathMap
 	CmdTimeoutSeconds    int
 	SharedFileSystemPath string
+	FolderExpression     string
 }
 
 func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
@@ -258,15 +262,20 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	}
 
 	name := opts.PVName
-	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
-
+	folderName := ""
+	if pvc.GetAnnotations()[customFolderNameAnnotation] != "" {
+		folderName = pvc.GetAnnotations()[customFolderNameAnnotation]
+	} else {
+		folderName := strings.Replace(p.config.FolderExpression, "{{.namespace}}", opts.PVC.Namespace, -1)
+		folderName = strings.Replace(folderName, "{{.pvName}}", name, -1)
+		folderName = strings.Replace(folderName, "{{.pvcName}}", opts.PVC.Name, -1)
+	}
 	path := filepath.Join(basePath, folderName)
 	if nodeName == "" {
 		logrus.Infof("Creating volume %v at %v", name, path)
 	} else {
 		logrus.Infof("Creating volume %v at %v:%v", name, nodeName, path)
 	}
-
 	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	provisionCmd := []string{"/bin/sh", "/script/setup"}
 	if err := p.createHelperPod(ActionTypeCreate, provisionCmd, volumeOptions{
@@ -652,6 +661,11 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
 	} else {
 		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
+	}
+	if data.FolderExpression != "" {
+		cfg.FolderExpression = data.FolderExpression
+	} else {
+		cfg.FolderExpression = defaultFolderExpression
 	}
 	return cfg, nil
 }

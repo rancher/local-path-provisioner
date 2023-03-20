@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 package test
@@ -6,9 +7,9 @@ import (
 	"fmt"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/stretchr/testify/suite"
+	"strings"
 	"testing"
 	"time"
-	"strings"
 )
 
 const (
@@ -127,6 +128,12 @@ loop:
 
 func (p *PodTestSuite) TestPodWithSubpath() {
 	p.kustomizeDir = "pod-with-subpath"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
+func (p *PodTestSuite) TestPodWithCustomFolder() {
+	p.kustomizeDir = "pod-with-custom-folder"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
