@@ -231,7 +231,7 @@ If the reload fails, the provisioner will log the error and **continue using the
 
 >time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
 
-#### Volume Types
+### Volume Types
 
 To specify the type of volume you want the provisioner to create, add either of the following annotations;
 
