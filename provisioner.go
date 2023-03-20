@@ -45,6 +45,7 @@ const (
 
 const (
 	defaultCmdTimeoutSeconds = 120
+	defaultVolumeType        = "hostPath"
 )
 
 var (
@@ -282,15 +283,14 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	fs := v1.PersistentVolumeFilesystem
 
 	var pvs v1.PersistentVolumeSource
-	defaultVolumeType := "hostPath"
-	if dVal, ok := opts.StorageClass.GetAnnotations()["defaultVolumeType"]; ok {
-		defaultVolumeType = dVal
-	}
 	var volumeType string
-	if val, ok := opts.PVC.GetAnnotations()["volumeType"]; ok {
-		volumeType = val
+	if dVal, ok := opts.StorageClass.GetAnnotations()["defaultVolumeType"]; ok {
+		volumeType = dVal
 	} else {
 		volumeType = defaultVolumeType
+	}
+	if val, ok := opts.PVC.GetAnnotations()["volumeType"]; ok {
+		volumeType = val
 	}
 	pvs, err = createPersistentVolumeSource(volumeType, path)
 	if err != nil {
