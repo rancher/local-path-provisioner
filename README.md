@@ -249,6 +249,24 @@ annotations:
 
 A few things to note; the annotation for the `StorageClass` will apply to all volumes using it and is superseded by the annotation on the PVC if one is provided. If neither of the annotations was provided then we default to `hostPath`.
 
+### Storage classes
+
+If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `path`.
+
+```
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ssd-local-path
+provisioner: cluster.local/local-path-provisioner
+parameters:
+  path: /data/ssd
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+```
+
+Here the provisioner will use the path `/data/ssd` when storage class `ssd-local-path` is used.
+
 ## Uninstall
 
 Before uninstallation, make sure the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
