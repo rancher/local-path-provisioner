@@ -231,6 +231,24 @@ If the reload fails, the provisioner will log the error and **continue using the
 
 >time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
 
+#### Volume Types
+
+To specify the type of volume you want the provisioner to create, add either of the following annotations;
+
+- PVC: 
+```yaml
+annotations:
+  volumeType: <local or hostPath>
+```
+
+- StorageClass:
+```yaml
+annotations:
+  defaultVolumeType: <local or hostPath>
+```
+
+A few things to note; the annotation for the `StorageClass` will apply to all volumes using it and is superseded by the annotation on the PVC if one is provided. If neither of the annotations was provided then we default to `hostPath`.
+
 ## Uninstall
 
 Before uninstallation, make sure the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
