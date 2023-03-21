@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 package test
@@ -6,9 +7,9 @@ import (
 	"fmt"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/stretchr/testify/suite"
+	"strings"
 	"testing"
 	"time"
-	"strings"
 )
 
 const (
@@ -85,6 +86,12 @@ func (p *PodTestSuite) TestPodWithHostPathVolume() {
 
 func (p *PodTestSuite) TestPodWithLocalVolume() {
 	p.kustomizeDir = "pod-with-local-volume"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+}
+
+func (p *PodTestSuite) TestPodWithLocalVolumeDefault() {
+	p.kustomizeDir = "pod-with-default-local-volume"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
 }
