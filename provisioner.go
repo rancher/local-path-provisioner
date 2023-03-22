@@ -166,7 +166,7 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	}()
 }
 
-func (p *LocalPathProvisioner) getRandomPathOnNode(node string) (string, error) {
+func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string) (string, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
@@ -196,6 +196,14 @@ func (p *LocalPathProvisioner) getRandomPathOnNode(node string) (string, error) 
 	if len(paths) == 0 {
 		return "", fmt.Errorf("no local path available on node %v", node)
 	}
+	// if a particular path was requested by storage class
+	if requestedPath != "" {
+		if _, ok := paths[requestedPath]; !ok {
+			return "", fmt.Errorf("config doesn't contain path %v on node %v", requestedPath, node)
+		}
+		return requestedPath, nil
+	}
+	// if no particular path was requested, choose a random one
 	path := ""
 	for path = range paths {
 		break
@@ -254,13 +262,13 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 		// This clause works only with sharedFS
 		nodeName = node.Name
 	}
-	var basePath string
-	basePath, err = p.getRandomPathOnNode(nodeName)
+	var requestedPath string
 	if storageClass.Parameters != nil {
-		if _, ok := storageClass.Parameters["path"]; ok {
-			basePath = storageClass.Parameters["path"]
+		if _, ok := storageClass.Parameters["nodePath"]; ok {
+			requestedPath = storageClass.Parameters["nodePath"]
 		}
 	}
+	basePath, err := p.getPathOnNode(nodeName, requestedPath)
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
