@@ -251,7 +251,7 @@ A few things to note; the annotation for the `StorageClass` will apply to all vo
 
 ### Storage classes
 
-If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `path`.
+If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`
 
 ```
 apiVersion: storage.k8s.io/v1
@@ -260,7 +260,7 @@ metadata:
   name: ssd-local-path
 provisioner: cluster.local/local-path-provisioner
 parameters:
-  path: /data/ssd
+  nodePath: /data/ssd
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
