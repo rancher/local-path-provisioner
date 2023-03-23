@@ -59,8 +59,8 @@ Create the name of the service account to use.
 Create the name of the provisioner to use.
 */}}
 {{- define "local-path-provisioner.provisionerName" -}}
-{{- if .Values.storageClass.provisionerName -}}
-{{- printf .Values.storageClass.provisionerName -}}
+{{- if .Values.storageClasses.provisionerName -}}
+{{- printf .Values.storageClasses.provisionerName -}}
 {{- else -}}
 cluster.local/{{ template "local-path-provisioner.fullname" . -}}
 {{- end -}}

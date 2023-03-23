@@ -24,22 +24,26 @@ nameOverride: ""
 fullnameOverride: ""
 
 ## For creating the StorageClass automatically:
-storageClass:
+storageClasses:
   create: true
 
   ## Set a provisioner name. If unset, a name will be generated.
   # provisionerName: rancher.io/local-path
 
-  ## Set StorageClass as the default StorageClass
-  ## Ignored if storageClass.create is false
-  defaultClass: false
+  classes:
+    # The default storageclass with random path selection
+    # For retro-compatibility with versions < 0.0.24
+    local-path:
+      ## Set StorageClass as the default StorageClass
+      ## Ignored if storageClass.create is false
+      defaultClass: false
+      ## ReclaimPolicy field of the class, which can be either Delete or Retain
+      reclaimPolicy: Delete
 
-  ## Set a StorageClass name
-  ## Ignored if storageClass.create is false
-  name: local-path
-
-  ## ReclaimPolicy field of the class, which can be either Delete or Retain
-  reclaimPolicy: Delete
+      ## The path where to store the volumes
+      ## Must exist in nodePathMap, if not specified, the path would be chosen
+      ## randomly when provisioning.
+      # nodePath: /my/path
 
 # nodePathMap is the place user can customize where to store the data on each node.
 # 1. If one node is not listed on the nodePathMap, and Kubernetes wants to create volume on it, the paths specified in

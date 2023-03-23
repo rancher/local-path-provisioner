@@ -1,16 +1,22 @@
-{{ if .Values.storageClass.create -}}
+{{ if .Values.storageClasses.create -}}
+
+{{ range $storageClassName, $storageClassConfig := .Values.storageClasses.classes }}
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: {{ .Values.storageClass.name }}
+  name: {{ $storageClassName }}
   labels:
-{{ include "local-path-provisioner.labels" . | indent 4 }}
-{{- if .Values.storageClass.defaultClass }}
+{{ include "local-path-provisioner.labels" $ | indent 4 }}
   annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-{{- end }}
-provisioner: {{ template "local-path-provisioner.provisionerName" . }}
+    storageclass.kubernetes.io/is-default-class: "{{ default $storageClassConfig.defaultClass false }}"
+provisioner: {{ template "local-path-provisioner.provisionerName" $ }}
 volumeBindingMode: WaitForFirstConsumer
-reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
+reclaimPolicy: {{ $storageClassConfig.reclaimPolicy }}
 allowVolumeExpansion: true
+{{- if $storageClassConfig.nodePath }}
+nodePath: {{ $storageClassConfig.nodePath }}
 {{- end }}
+{{- end }}
+
+{{- end -}}
