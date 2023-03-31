@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,6 +20,7 @@ import (
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
 )
@@ -556,12 +559,16 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	// If it already exists due to some previous errors, the pod will be cleaned up later automatically
 	// https://github.com/rancher/local-path-provisioner/issues/27
 	logrus.Infof("create the helper pod %s into %s", helperPod.Name, p.namespace)
-	_, err = p.kubeClient.CoreV1().Pods(p.namespace).Create(context.TODO(), helperPod, metav1.CreateOptions{})
+	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(context.TODO(), helperPod, metav1.CreateOptions{})
 	if err != nil && !k8serror.IsAlreadyExists(err) {
 		return err
 	}
 
 	defer func() {
+		// log helper pod logs to the controller
+		if err := saveHelperPodLogs(pod); err != nil {
+			logrus.Error(err.Error())
+		}
 		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(context.TODO(), helperPod.Name, metav1.DeleteOptions{})
 		if e != nil {
 			logrus.Errorf("unable to delete the helper pod: %v", e)
@@ -700,4 +707,46 @@ func createPersistentVolumeSource(volumeType string, path string) (pvs v1.Persis
 	}
 
 	return pvs, nil
+}
+
+func saveHelperPodLogs(pod *v1.Pod) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to save %s logs", pod.Name)
+	}()
+
+	// save helper pod logs
+	podLogOpts := v1.PodLogOptions{}
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve in cluster config: %s", err.Error())
+	}
+	// creates the clientset
+	clientset, err := clientset.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("unable to get access to k8s: %s", err.Error())
+	}
+	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
+	podLogs, err := req.Stream(context.TODO())
+	if err != nil {
+		return fmt.Errorf("error in opening stream: %s", err.Error())
+	}
+
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, podLogs)
+	if err != nil {
+		return fmt.Errorf("error in copy information from podLogs to buf: %s", err.Error())
+	}
+	podLogs.Close()
+
+	// log all messages from the helper pod to the controller
+	logrus.Infof("Start of %s logs", pod.Name)
+	bufferStr := buf.String()
+	if len(bufferStr) > 0 {
+		helperPodLogs := strings.Split(strings.Trim(bufferStr, "\n"), "\n")
+		for _, log := range helperPodLogs {
+			logrus.Info(log)
+		}
+	}
+	logrus.Infof("End of %s logs", pod.Name)
+	return nil
 }
