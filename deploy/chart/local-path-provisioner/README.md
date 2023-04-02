@@ -43,7 +43,7 @@ The command deploys Local Path Provisioner on the Kubernetes cluster in the defa
 To uninstall/delete the `local-path-storage` deployment:
 
 ```console
-$ helm delete --purge local-path-storage
+$ helm uninstall local-path-storage
 ```
 
 The command removes all the Kubernetes components associated with the chart and deletes the release.
@@ -55,6 +55,7 @@ default values.
 
 | Parameter                           | Description                                                                     | Default                                                                             |
 | ----------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `commonLabels`                      | Custom labels to apply to all resources                                         | `{}`                                                                                |
 | `image.repository`                  | Local Path Provisioner image name                                               | `rancher/local-path-provisioner`                                                    |
 | `image.tag`                         | Local Path Provisioner image tag                                                | `master-head`                                                                       |
 | `image.pullPolicy`                  | Image pull policy                                                               | `IfNotPresent`                                                                      |
