@@ -1,6 +1,7 @@
 # Default values for local-path-provisioner.
 
 replicaCount: 1
+commonLabels: {}
 
 image:
   repository: rancher/local-path-provisioner
