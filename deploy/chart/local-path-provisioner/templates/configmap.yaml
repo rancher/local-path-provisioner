@@ -16,15 +16,20 @@ data:
     {{- end }}
     {{- $config | toPrettyJson | nindent 4 }}
   setup: |-
-    {{ .Values.configmap.setup | nindent 4 }}
+    {{- .Values.configmap.setup | nindent 4 }}
   teardown: |-
-    {{ .Values.configmap.teardown | nindent 4 }}
+    {{- .Values.configmap.teardown | nindent 4 }}
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod
     metadata:
       name: helper-pod
     spec:
+      priorityClassName: system-node-critical
+      tolerations:
+        - key: node.kubernetes.io/disk-pressure
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: helper-pod
           {{- if .Values.privateRegistry.registryUrl }}

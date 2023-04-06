@@ -171,11 +171,18 @@ data:
         metadata:
           name: helper-pod
         spec:
+          priorityClassName: system-node-critical
+          tolerations:
+            - key: node.kubernetes.io/disk-pressure
+              operator: Exists
+              effect: NoSchedule
           containers:
           - name: helper-pod
             image: busybox
 
 ```
+
+The helperPod is allowed to run on nodes experiencing disk pressure conditions, despite the potential resource constraints. When it runs on such a node, it can carry out specific cleanup tasks, freeing up space in PVCs, and resolving the disk-pressure issue.
 
 #### `config.json`
 
@@ -235,7 +242,7 @@ If the reload fails, the provisioner will log the error and **continue using the
 
 To specify the type of volume you want the provisioner to create, add either of the following annotations;
 
-- PVC: 
+- PVC:
 ```yaml
 annotations:
   volumeType: <local or hostPath>
