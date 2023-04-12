@@ -709,13 +709,18 @@ func createPersistentVolumeSource(volumeType string, path string) (pvs v1.Persis
 	return pvs, nil
 }
 
+// saveHelperPodLogs takes what is in stdout/stderr from the helper
+// pod and logs it to the provisioner's logs. Returns an error if we
+// can't retrieve the helper pod logs.
 func saveHelperPodLogs(pod *v1.Pod) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to save %s logs", pod.Name)
 	}()
 
 	// save helper pod logs
-	podLogOpts := v1.PodLogOptions{}
+	podLogOpts := v1.PodLogOptions{
+		Container: "helper-pod",
+	}
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return fmt.Errorf("unable to retrieve in cluster config: %s", err.Error())
@@ -734,7 +739,7 @@ func saveHelperPodLogs(pod *v1.Pod) (err error) {
 	buf := new(bytes.Buffer)
 	_, err = io.Copy(buf, podLogs)
 	if err != nil {
-		return fmt.Errorf("error in copy information from podLogs to buf: %s", err.Error())
+		return fmt.Errorf("error in copying information from podLogs to buf: %s", err.Error())
 	}
 	podLogs.Close()
 
