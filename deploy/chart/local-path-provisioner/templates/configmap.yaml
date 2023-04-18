@@ -29,6 +29,6 @@ data:
           {{- if .Values.privateRegistry.registryUrl }}
           image: {{ .Values.privateRegistry.registryUrl }}/{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}
           {{- else }}
-          image: {{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}
+          image: {{ .Values.helperImage.defaultRegistry}}/{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}
           {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}

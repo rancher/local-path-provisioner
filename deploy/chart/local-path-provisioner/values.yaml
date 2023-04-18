@@ -3,12 +3,14 @@
 replicaCount: 1
 
 image:
+  defaultRegistry: docker.io
   repository: rancher/local-path-provisioner
   tag: master-head
   pullPolicy: IfNotPresent
 
 helperImage:
-  repository: busybox
+  defaultRegistry: docker.io
+  repository: library/busybox
   tag: latest
 
 defaultSettings:

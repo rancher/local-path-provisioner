@@ -26,7 +26,7 @@ spec:
         {{- if .Values.privateRegistry.registryUrl }}
           image: "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         {{- else }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.defaultRegistry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
@@ -43,7 +43,7 @@ spec:
           {{- if .Values.privateRegistry.registryUrl }}
             - "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
           {{- else }}
-            - "{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
+            - "{{ .Values.helperImage.defaultRegistry }}/{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
           {{- end }}
             - --configmap-name
             - {{ .Values.configmap.name }}
