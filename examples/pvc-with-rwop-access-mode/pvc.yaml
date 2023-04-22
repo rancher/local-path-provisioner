@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-rwop-volume-pvc
+  annotations:
+    volumeType: local
+spec:
+  accessModes:
+    - ReadWriteOncePod
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 128Mi
