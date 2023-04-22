@@ -252,8 +252,8 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 			return nil, pvController.ProvisioningFinished, fmt.Errorf("claim.Spec.Selector is not supported")
 		}
 		for _, accessMode := range pvc.Spec.AccessModes {
-			if accessMode != v1.ReadWriteOnce {
-				return nil, pvController.ProvisioningFinished, fmt.Errorf("Only support ReadWriteOnce access mode")
+			if accessMode != v1.ReadWriteOnce && accessMode != v1.ReadWriteOncePod {
+				return nil, pvController.ProvisioningFinished, fmt.Errorf("NodePath only supports ReadWriteOnce and ReadWriteOncePod (1.22+) access modes")
 			}
 		}
 		if node == nil {

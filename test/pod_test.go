@@ -102,6 +102,12 @@ func (p *PodTestSuite) TestPodWithNodeAffinity() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+func (p *PodTestSuite) TestPodWithRWOPVolume() {
+	p.kustomizeDir = "pod-with-rwop-volume"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+}
+
 func (p *PodTestSuite) TestPodWithSecurityContext() {
 	p.kustomizeDir = "pod-with-security-context"
 	kustomizeDir := testdataFile(p.kustomizeDir)
