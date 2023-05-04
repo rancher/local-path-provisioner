@@ -12,6 +12,17 @@ metadata:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: local-path-provisioner-role
+  namespace: local-path-storage
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: local-path-provisioner-role
@@ -20,7 +31,10 @@ rules:
     resources: [ "nodes", "persistentvolumeclaims", "configmaps" ]
     verbs: [ "get", "list", "watch" ]
   - apiGroups: [ "" ]
-    resources: [ "endpoints", "persistentvolumes", "pods" ]
+    resources: [ "pods" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "endpoints", "persistentvolumes" ]
     verbs: [ "*" ]
   - apiGroups: [ "" ]
     resources: [ "events" ]
@@ -28,6 +42,21 @@ rules:
   - apiGroups: [ "storage.k8s.io" ]
     resources: [ "storageclasses" ]
     verbs: [ "get", "list", "watch" ]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: local-path-provisioner-bind
+  namespace: local-path-storage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: local-path-provisioner-role
+subjects:
+  - kind: ServiceAccount
+    name: local-path-provisioner-service-account
+    namespace: local-path-storage
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
