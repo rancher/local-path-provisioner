@@ -35,7 +35,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
-    verbs: ["*"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
