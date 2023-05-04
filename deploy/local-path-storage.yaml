@@ -17,8 +17,8 @@ metadata:
   name: local-path-provisioner-role
   namespace: local-path-storage
 rules:
-  - apiGroups: [ "" ]
-    resources: [ "pods" ]
+  - apiGroups: [""]
+    resources: ["pods"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
 
 ---
@@ -27,21 +27,21 @@ kind: ClusterRole
 metadata:
   name: local-path-provisioner-role
 rules:
-  - apiGroups: [ "" ]
-    resources: [ "nodes", "persistentvolumeclaims", "configmaps" ]
-    verbs: [ "get", "list", "watch" ]
-  - apiGroups: [ "" ]
-    resources: [ "pods" ]
-    verbs: [ "get", "list", "watch" ]
-  - apiGroups: [ "" ]
-    resources: [ "persistentvolumes" ]
-    verbs: [ "*" ]
-  - apiGroups: [ "" ]
-    resources: [ "events" ]
-    verbs: [ "create", "patch" ]
-  - apiGroups: [ "storage.k8s.io" ]
-    resources: [ "storageclasses" ]
-    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [""]
+    resources: ["nodes", "persistentvolumeclaims", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
