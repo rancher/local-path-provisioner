@@ -48,6 +48,10 @@ const (
 	defaultVolumeType        = "hostPath"
 )
 
+const (
+	nodeNameAnnotationKey = "local.path.provisioner/selected-node"
+)
+
 var (
 	ConfigFileCheckInterval = 30 * time.Second
 
@@ -343,7 +347,7 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
-			Annotations: map[string]string{"local.path.provisioner/selected-node": nodeName},
+			Annotations: map[string]string{nodeNameAnnotationKey: nodeName},
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: *opts.StorageClass.ReclaimPolicy,
