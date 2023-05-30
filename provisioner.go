@@ -342,14 +342,15 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	}
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:        name,
+			Annotations: map[string]string{"local.path.provisioner/selected-node": nodeName},
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: *opts.StorageClass.ReclaimPolicy,
 			AccessModes:                   pvc.Spec.AccessModes,
 			VolumeMode:                    &fs,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
+				v1.ResourceStorage: pvc.Spec.Resources.Requests[v1.ResourceStorage],
 			},
 			PersistentVolumeSource: pvs,
 			NodeAffinity:           nodeAffinity,
