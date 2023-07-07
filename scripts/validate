@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+if [ -n "$SKIP_VALIDATE" ]; then
+    echo Skipping validation
+    exit
+fi
+
 cd $(dirname $0)/..
 
 echo Running validation
