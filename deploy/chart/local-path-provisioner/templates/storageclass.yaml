@@ -10,7 +10,7 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 {{- end }}
 provisioner: {{ template "local-path-provisioner.provisionerName" . }}
-volumeBindingMode: WaitForFirstConsumer
+volumeBindingMode: {{ .Values.storageClass.volumeBindingMode }}
 reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
 allowVolumeExpansion: true
 {{- end }}
