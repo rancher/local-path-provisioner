@@ -78,6 +78,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: config-volume
           configMap:
