@@ -14,7 +14,7 @@ parameters:
 {{- with .Values.storageClass.parameters }}
   {{- toYaml . | nindent 2 }}
 {{- end }}
-volumeBindingMode: WaitForFirstConsumer
+volumeBindingMode: {{ .Values.storageClass.volumeBindingMode }}
 reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
 allowVolumeExpansion: true
 {{- end }}
