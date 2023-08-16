@@ -11,7 +11,9 @@ metadata:
 {{- end }}
 provisioner: {{ template "local-path-provisioner.provisionerName" . }}
 parameters:
-  fsType: xfs
+{{- with .Values.storageClass.parameters }}
+  {{- toYaml . | nindent 2 }}
+{{- end }}
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
 allowVolumeExpansion: true

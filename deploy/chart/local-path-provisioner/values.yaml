@@ -38,6 +38,9 @@ storageClass:
   ## Ignored if storageClass.create is false
   name: local-path
 
+  ## parameters configures the volumes belonging to the storage class
+  parameters: {}
+
   ## ReclaimPolicy field of the class, which can be either Delete or Retain
   reclaimPolicy: Delete
 
