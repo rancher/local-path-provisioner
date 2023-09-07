@@ -5,10 +5,9 @@ metadata:
   name: {{ .Values.storageClass.name }}
   labels:
 {{ include "local-path-provisioner.labels" . | indent 4 }}
-{{- if .Values.storageClass.defaultClass }}
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-{{- end }}
+annotations:
+  storageclass.kubernetes.io/is-default-class: "{{ .Values.storageClass.defaultClass }}"
+  defaultVolumeType: "{{ .Values.storageClass.defaultVolumeType }}"
 provisioner: {{ template "local-path-provisioner.provisionerName" . }}
 volumeBindingMode: {{ .Values.storageClass.volumeBindingMode }}
 reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
