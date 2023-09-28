@@ -58,15 +58,15 @@ spec:
             - {{ .Values.configmap.name }}
           {{- if .Values.workerThreads }}
             - --worker-threads
-            - {{ .Values.workerThreads }}
+            - {{ .Values.workerThreads | quote }}
           {{- end }}
           {{- if .Values.provisioningRetryCount }}
             - --provisioning-retry-count
-            - {{ .Values.provisioningRetryCount }}
+            - {{ .Values.provisioningRetryCount | quote }}
           {{- end }}
           {{- if .Values.deletionRetryCount }}
             - --deletion-retry-count
-            - {{ .Values.deletionRetryCount }}
+            - {{ .Values.deletionRetryCount | quote }}
           {{- end }}
           volumeMounts:
             - name: config-volume
