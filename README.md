@@ -155,7 +155,9 @@ data:
                         "node":"yasker-lp-dev3",
                         "paths":[]
                 }
-                ]
+                ],
+                "setupCommand": "/manager",
+                "teardownCommand": "/manager"
         }
   setup: |-
         #!/bin/sh
@@ -199,6 +201,16 @@ In this case all access modes are supported: `ReadWriteOnce`, `ReadOnlyMany` and
 In addition `volumeBindingMode: Immediate` can be used in  StorageClass definition.
 
 Please note that `nodePathMap` and `sharedFileSystemPath` are mutually exclusive. If `sharedFileSystemPath` is used, then `nodePathMap` must be set to `[]`.
+
+The `setupCommand` and `teardownCommand` allow you to specify the path to binary files in helperPod that will be called when creating or deleting pvc respectively. This can be useful if you need to use distroless images for security reasons. See the examples/distroless directory for an example. A binary file can take the following parameters:
+| Parameter | Description |
+| -------------------- | ----------- |
+| -p | Volume directory that should be created or removed. | -m | -p | Volume directory that should be created or removed. |
+| -m | The PersistentVolume mode (`Block` or `Filesystem`). | -m | The PersistentVolume mode (`Block` or `Filesystem`). |
+| -s | Requested volume size in bytes. | -s | Requested volume size in bytes. |
+| -a | Action type. Can be `create` or `delete` | -a | -a | Action type.
+
+The `setupCommand` and `teardownCommand` have higher priority than the `setup` and `teardown` scripts from the ConfigMap.  
 
 ##### Rules
 The configuration must obey following rules:

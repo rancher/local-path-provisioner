@@ -82,6 +82,8 @@ type ConfigData struct {
 	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
 	CmdTimeoutSeconds    int                `json:"cmdTimeoutSeconds,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
+	SetupCommand         string             `json:"setupCommand,omitempty"`
+	TeardownCommand      string             `json:"teardownCommand,omitempty"`
 }
 
 type NodePathMap struct {
@@ -92,6 +94,8 @@ type Config struct {
 	NodePathMap          map[string]*NodePathMap
 	CmdTimeoutSeconds    int
 	SharedFileSystemPath string
+	SetupCommand         string
+	TeardownCommand      string
 }
 
 func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
@@ -288,7 +292,12 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	}
 
 	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	provisionCmd := []string{"/bin/sh", "/script/setup"}
+	provisionCmd := make([]string, 0, 2)
+	if p.config.SetupCommand == "" {
+		provisionCmd = append(provisionCmd, "/bin/sh", "/script/setup")
+	} else {
+		provisionCmd = append(provisionCmd, p.config.SetupCommand)
+	}
 	if err := p.createHelperPod(ActionTypeCreate, provisionCmd, volumeOptions{
 		Name:        name,
 		Path:        path,
@@ -377,7 +386,12 @@ func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolu
 			logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
 		}
 		storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
-		cleanupCmd := []string{"/bin/sh", "/script/teardown"}
+		cleanupCmd := make([]string, 0, 2)
+		if p.config.TeardownCommand == "" {
+			cleanupCmd = append(cleanupCmd, "/bin/sh", "/script/teardown")
+		} else {
+			cleanupCmd = append(cleanupCmd, p.config.TeardownCommand)
+		}
 		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volumeOptions{
 			Name:        pv.Name,
 			Path:        path,
@@ -485,26 +499,6 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 				},
 			},
 		},
-		{
-			Name: helperScriptVolName,
-			VolumeSource: v1.VolumeSource{
-				ConfigMap: &v1.ConfigMapVolumeSource{
-					LocalObjectReference: v1.LocalObjectReference{
-						Name: p.configMapName,
-					},
-					Items: []v1.KeyToPath{
-						{
-							Key:  "setup",
-							Path: "setup",
-						},
-						{
-							Key:  "teardown",
-							Path: "teardown",
-						},
-					},
-				},
-			},
-		},
 	}
 	lpvTolerations := []v1.Toleration{
 		{
@@ -513,8 +507,39 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	}
 	helperPod := p.helperPod.DeepCopy()
 
-	scriptMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperScriptVolName, helperScriptDir)
-	scriptMount.MountPath = helperScriptDir
+	keyToPathItems := make([]v1.KeyToPath, 0, 2)
+
+	if p.config.SetupCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "setup",
+			Path: "setup",
+		})
+	}
+
+	if p.config.TeardownCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "teardown",
+			Path: "teardown",
+		})
+	}
+
+	if len(keyToPathItems) > 0 {
+		lpvVolumes = append(lpvVolumes, v1.Volume{
+			Name: "script",
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: p.configMapName,
+					},
+					Items: keyToPathItems,
+				},
+			},
+		})
+
+		scriptMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperScriptVolName, helperScriptDir)
+		scriptMount.MountPath = helperScriptDir
+	}
+
 	dataMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperDataVolName, parentDir)
 	parentDir = dataMount.MountPath
 	parentDir = strings.TrimSuffix(parentDir, string(filepath.Separator))
@@ -548,7 +573,8 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	helperPod.Spec.Containers[0].Env = append(helperPod.Spec.Containers[0].Env, env...)
 	helperPod.Spec.Containers[0].Args = []string{"-p", filepath.Join(parentDir, volumeDir),
 		"-s", strconv.FormatInt(o.SizeInBytes, 10),
-		"-m", string(o.Mode)}
+		"-m", string(o.Mode),
+		"-a", string(action)}
 	helperPod.Spec.Containers[0].SecurityContext = &v1.SecurityContext{
 		Privileged: &privileged,
 	}
@@ -643,6 +669,8 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	}()
 	cfg = &Config{}
 	cfg.SharedFileSystemPath = data.SharedFileSystemPath
+	cfg.SetupCommand = data.SetupCommand
+	cfg.TeardownCommand = data.TeardownCommand
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
 		if cfg.NodePathMap[n.Node] != nil {
@@ -672,6 +700,7 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	} else {
 		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
 	}
+
 	return cfg, nil
 }
 
