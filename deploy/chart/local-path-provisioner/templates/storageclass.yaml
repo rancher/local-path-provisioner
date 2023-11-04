@@ -1,16 +1,16 @@
 {{- $storageClasses := list }}
-{{ if .Values.multipleStorageClasses }}
-{{ $storageClasses = .Values.multipleStorageClasses }}
+{{ if .Values.storageClassConfigs }}
+{{ $storageClasses = .Values.storageClassConfigs }}
 {{- else }}
-{{ $storageClasses = list .Values }}
+{{ $storageClasses = dict .Values.storageClass.name .Values }}
 {{ end }}
 {{- $dot := . }}
-{{- range $values := $storageClasses }}
+{{- range $name, $values := $storageClasses }}
 {{ if $values.storageClass.create -}}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: {{ $values.storageClass.name }}
+  name: {{ $name }}
   labels:
 {{ include "local-path-provisioner.labels" $dot | indent 4 }}
   annotations:

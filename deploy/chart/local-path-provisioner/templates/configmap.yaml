@@ -14,8 +14,19 @@ data:
     {{- with .Values.sharedFileSystemPath }}
     {{- $config = set $config "sharedFileSystemPath" . }}
     {{- end }}
-    {{- with .Values.multipleStorageClasses }}
-    {{- $config = set $config "sharedFileSystemPath" . }}
+    {{- with .Values.storageClassConfigs }}
+    {{- $configs := dict }}
+    {{- range $key, $value := . }}
+      {{- $configValue := dict }}
+      {{- with $value.nodePathMap }}
+      {{- $configValue = set $configValue "nodePathMap" . }}
+      {{- end }}
+      {{- with $value.sharedFileSystemPath }}
+      {{- $configValue = set $configValue "sharedFileSystemPath" . }}
+      {{- end }}
+      {{- $configs = set $configs $key $configValue }}
+    {{- end }}
+    {{- $config = set $config "storageClassConfigs" $configs }}
     {{- end }}
     {{- $config | toPrettyJson | nindent 4 }}
   setup: |-
