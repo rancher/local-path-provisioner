@@ -73,20 +73,21 @@ nodePathMap:
 # If `sharedFileSystemPath` is used, then `nodePathMap` must be set to `[]`.
 # sharedFileSystemPath: ""
 
-# `multipleStorageClasses` allows the provisioner to manage multiple independent storage classes.
+# `storageClassConfigs` allows the provisioner to manage multiple independent storage classes.
 # Each storage class must have a unique name, and contains the same fields as shown above for
 # a single storage class setup, EXCEPT for the provisionerName, which is the same for all
-# storage classes
-# multipleStorageClasses:
-# - storageClass:
-#     name: my-storage-class-name
-#     create: true
-#     defaultClass: false
-#     reclaimPolicy: Delete
-#   sharedFileSystemPath: ""
-#   ## OR
-#   # See above
-#   nodePathMap: {}
+# storage classes, and name, which is the key of the map.
+# storageClassConfigs: {}
+#   my-storage-class:
+#     storageClass:
+#       create: true
+#       defaultClass: false
+#       defaultVolumeType: hostPath
+#       reclaimPolicy: Delete
+#     sharedFileSystemPath: ""
+#     ## OR
+#     # See above
+#     nodePathMap: {}
     
 podAnnotations: {}
 
