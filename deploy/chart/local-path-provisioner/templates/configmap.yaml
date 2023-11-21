@@ -22,8 +22,13 @@ data:
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod
+    namespace: {{ default .Release.Namespace .Values.helperPod.namespaceOverride }}
     metadata:
-      name: helper-pod
+      name: {{ .Values.helperPod.name }}
+      {{- with .Values.helperPod.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       priorityClassName: system-node-critical
       tolerations:
