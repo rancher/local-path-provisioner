@@ -36,10 +36,10 @@ data:
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod
-    namespace: {{ default .Release.Namespace .Values.helperPod.namespaceOverride }}
+    namespace: {{ default .Release.Namespace .Values.configmap.helperPod.namespaceOverride }}
     metadata:
-      name: {{ .Values.helperPod.name }}
-      {{- with .Values.helperPod.annotations }}
+      name: {{ .Values.configmap.helperPod.name }}
+      {{- with .Values.configmap.helperPod.annotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

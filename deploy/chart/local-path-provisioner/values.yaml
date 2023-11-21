@@ -156,12 +156,11 @@ configmap:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
-
-helperPod:
-  # Allows to run the helper pod in another namespace. Uses release namespace by default.
-  namespaceOverride: ""
-  name: "helper-pod"
-  annotations: {}
+  helperPod:
+    # Allows to run the helper pod in another namespace. Uses release namespace by default.
+    namespaceOverride: ""
+    name: "helper-pod"
+    annotations: {}
 
 # Number of provisioner worker threads to call provision/delete simultaneously.
 # workerThreads: 4
