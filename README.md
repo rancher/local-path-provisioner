@@ -277,7 +277,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: ssd-local-path
-provisioner: cluster.local/local-path-provisioner
+provisioner: rancher.io/local-path
 parameters:
   nodePath: /data/ssd
 volumeBindingMode: WaitForFirstConsumer
