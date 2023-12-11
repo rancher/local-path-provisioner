@@ -286,6 +286,16 @@ reclaimPolicy: Delete
 
 Here the provisioner will use the path `/data/ssd` when storage class `ssd-local-path` is used.
 
+### Changing the name of the PersistentVolume
+
+By default the created folder will be `$persistentVolumeName_$persistentVolumeClaimNamespace_$persistentVolumeClaimName`.
+To specify a custom name, you can set the `volumeName` annotation on the PersistentVolumeClaim.
+
+```yaml
+annotations:
+  folderName: fooBar
+```
+
 ## Uninstall
 
 Before uninstallation, make sure the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
