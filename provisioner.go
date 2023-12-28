@@ -49,6 +49,7 @@ const (
 const (
 	defaultCmdTimeoutSeconds = 120
 	defaultVolumeType        = "hostPath"
+	defaultHostPathType      = v1.HostPathDirectoryOrCreate
 )
 
 const (
@@ -250,6 +251,8 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	pvc := opts.PVC
 	node := opts.SelectedNode
 	storageClass := opts.StorageClass
+	scAnnotations := opts.StorageClass.GetAnnotations()
+	pvcAnnotations := opts.PVC.GetAnnotations()
 	sharedFS, err := p.isSharedFilesystem()
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
@@ -301,12 +304,21 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	} else {
 		provisionCmd = append(provisionCmd, p.config.SetupCommand)
 	}
+	var hostPathType v1.HostPathType
+	if val, ok := pvcAnnotations["hostPathType"]; ok {
+		hostPathType = v1.HostPathType(val)
+	} else if dVal, ok := scAnnotations["defaultHostPathType"]; ok {
+		hostPathType = v1.HostPathType(dVal)
+	} else {
+		hostPathType = defaultHostPathType
+	}
 	if err := p.createHelperPod(ActionTypeCreate, provisionCmd, volumeOptions{
-		Name:        name,
-		Path:        path,
-		Mode:        *pvc.Spec.VolumeMode,
-		SizeInBytes: storage.Value(),
-		Node:        nodeName,
+		Name:         name,
+		Path:         path,
+		Mode:         *pvc.Spec.VolumeMode,
+		HostPathType: hostPathType,
+		SizeInBytes:  storage.Value(),
+		Node:         nodeName,
 	}); err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
@@ -315,15 +327,15 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 
 	var pvs v1.PersistentVolumeSource
 	var volumeType string
-	if dVal, ok := opts.StorageClass.GetAnnotations()["defaultVolumeType"]; ok {
+	if dVal, ok := scAnnotations["defaultVolumeType"]; ok {
 		volumeType = dVal
 	} else {
 		volumeType = defaultVolumeType
 	}
-	if val, ok := opts.PVC.GetAnnotations()["volumeType"]; ok {
+	if val, ok := pvcAnnotations["volumeType"]; ok {
 		volumeType = val
 	}
-	pvs, err = createPersistentVolumeSource(volumeType, path)
+	pvs, err = createPersistentVolumeSource(volumeType, path, hostPathType)
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
@@ -396,11 +408,12 @@ func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolu
 			cleanupCmd = append(cleanupCmd, p.config.TeardownCommand)
 		}
 		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volumeOptions{
-			Name:        pv.Name,
-			Path:        path,
-			Mode:        *pv.Spec.VolumeMode,
-			SizeInBytes: storage.Value(),
-			Node:        node,
+			Name:         pv.Name,
+			Path:         path,
+			Mode:         *pv.Spec.VolumeMode,
+			HostPathType: *pv.Spec.HostPath.Type,
+			SizeInBytes:  storage.Value(),
+			Node:         node,
 		}); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
@@ -468,11 +481,12 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 }
 
 type volumeOptions struct {
-	Name        string
-	Path        string
-	Mode        v1.PersistentVolumeMode
-	SizeInBytes int64
-	Node        string
+	Name         string
+	Path         string
+	Mode         v1.PersistentVolumeMode
+	HostPathType v1.HostPathType
+	SizeInBytes  int64
+	Node         string
 }
 
 func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions) (err error) {
@@ -491,14 +505,13 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	}
 	o.Path = filepath.Clean(o.Path)
 	parentDir, volumeDir := filepath.Split(o.Path)
-	hostPathType := v1.HostPathDirectoryOrCreate
 	lpvVolumes := []v1.Volume{
 		{
 			Name: helperDataVolName,
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: parentDir,
-					Type: &hostPathType,
+					Type: &o.HostPathType,
 				},
 			},
 		},
@@ -707,7 +720,7 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	return cfg, nil
 }
 
-func createPersistentVolumeSource(volumeType string, path string) (pvs v1.PersistentVolumeSource, err error) {
+func createPersistentVolumeSource(volumeType string, path string, hostPathType v1.HostPathType) (pvs v1.PersistentVolumeSource, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to create persistent volume source")
 	}()
@@ -720,7 +733,6 @@ func createPersistentVolumeSource(volumeType string, path string) (pvs v1.Persis
 			},
 		}
 	case "hostpath":
-		hostPathType := v1.HostPathDirectoryOrCreate
 		pvs = v1.PersistentVolumeSource{
 			HostPath: &v1.HostPathVolumeSource{
 				Path: path,
