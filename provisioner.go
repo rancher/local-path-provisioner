@@ -407,14 +407,17 @@ func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolu
 		} else {
 			cleanupCmd = append(cleanupCmd, p.config.TeardownCommand)
 		}
-		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volumeOptions{
-			Name:         pv.Name,
-			Path:         path,
-			Mode:         *pv.Spec.VolumeMode,
-			HostPathType: *pv.Spec.HostPath.Type,
-			SizeInBytes:  storage.Value(),
-			Node:         node,
-		}); err != nil {
+		volOpts := volumeOptions{
+			Name:        pv.Name,
+			Path:        path,
+			Mode:        *pv.Spec.VolumeMode,
+			SizeInBytes: storage.Value(),
+			Node:        node,
+		}
+		if pv.Spec.HostPath != nil {
+			volOpts.HostPathType = *pv.Spec.HostPath.Type
+		}
+		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volOpts); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
