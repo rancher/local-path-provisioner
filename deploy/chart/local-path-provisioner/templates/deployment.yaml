@@ -51,9 +51,9 @@ spec:
             - {{ template "local-path-provisioner.provisionerName" . }}
             - --helper-image
           {{- if .Values.privateRegistry.registryUrl }}
-            - "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
+            - "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.helper.image.repository }}:{{ .Values.helper.image.tag }}"
           {{- else }}
-            - "{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}"
+            - "{{ .Values.helper.image.repository }}:{{ .Values.helper.image.tag }}"
           {{- end }}
             - --configmap-name
             - {{ .Values.configmap.name }}
