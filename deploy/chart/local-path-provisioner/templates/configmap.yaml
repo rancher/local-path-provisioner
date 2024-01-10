@@ -30,11 +30,14 @@ data:
         - key: node.kubernetes.io/disk-pressure
           operator: Exists
           effect: NoSchedule
+      {{- with .Values.helper.tolerations }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: helper-pod
           {{- if .Values.privateRegistry.registryUrl }}
-          image: {{ .Values.privateRegistry.registryUrl }}/{{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}
+          image: {{ .Values.privateRegistry.registryUrl }}/{{ .Values.helper.image.repository }}:{{ .Values.helper.image.tag }}
           {{- else }}
-          image: {{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}
+          image: {{ .Values.helper.image.repository }}:{{ .Values.helper.image.tag }}
           {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
