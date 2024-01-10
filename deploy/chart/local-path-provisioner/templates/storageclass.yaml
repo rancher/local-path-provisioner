@@ -9,6 +9,10 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "{{ .Values.storageClass.defaultClass }}"
     defaultVolumeType: "{{ .Values.storageClass.defaultVolumeType }}"
 provisioner: {{ template "local-path-provisioner.provisionerName" . }}
+parameters:
+{{- with .Values.storageClass.parameters }}
+  {{- toYaml . | nindent 2 }}
+{{- end }}
 volumeBindingMode: {{ .Values.storageClass.volumeBindingMode }}
 reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
 allowVolumeExpansion: true
