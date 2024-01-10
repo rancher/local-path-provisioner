@@ -285,7 +285,7 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	}
 
 	name := opts.PVName
-	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
+	folderName := getFolderName(opts)
 
 	path := filepath.Join(basePath, folderName)
 	if nodeName == "" {
@@ -779,4 +779,11 @@ func saveHelperPodLogs(pod *v1.Pod) (err error) {
 	}
 	logrus.Infof("End of %s logs", pod.Name)
 	return nil
+}
+
+func getFolderName(opts pvController.ProvisionOptions) (folderName string) {
+	if annotationFolderName, ok := opts.PVC.GetAnnotations()["folderName"]; ok {
+		return annotationFolderName
+	}
+	return strings.Join([]string{opts.PVName, opts.PVC.Namespace, opts.PVC.Name}, "_")
 }
