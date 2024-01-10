@@ -155,9 +155,7 @@ data:
                         "node":"yasker-lp-dev3",
                         "paths":[]
                 }
-                ],
-                "setupCommand": "/manager",
-                "teardownCommand": "/manager"
+                ]
         }
   setup: |-
         #!/bin/sh
