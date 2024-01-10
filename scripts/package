@@ -14,7 +14,11 @@ if [ -e ${DOCKERFILE}.${ARCH} ]; then
     DOCKERFILE=${DOCKERFILE}.${ARCH}
 fi
 
-docker build -f ${DOCKERFILE} -t ${IMAGE} .
+if [ "$ARCH" = "riscv64" ]; then
+    export DOCKER_BUILDKIT=1
+    DOCKER_ARGS="--platform=$ARCH --build-arg=BASE=riscv64/alpine:edge"
+fi
+docker build ${DOCKER_ARGS} -f ${DOCKERFILE} -t ${IMAGE} .
 echo Built ${IMAGE}
 
 echo ${IMAGE} > ./bin/latest_image

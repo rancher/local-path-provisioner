@@ -1,4 +1,5 @@
-FROM alpine
+ARG BASE=alpine
+FROM ${BASE}
 
 RUN apk update
 RUN apk upgrade --no-cache busybox zlib

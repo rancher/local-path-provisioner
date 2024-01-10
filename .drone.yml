@@ -307,6 +307,78 @@ volumes:
 
 ---
 kind: pipeline
+name: riscv64
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: build
+  image: rancher/dapper:v0.4.2
+  commands:
+  - ARCH=riscv64 SKIP_TEST=true SKIP_VALIDATE=true dapper ci
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
+
+- name: github_binary_release
+  image: plugins/github-release
+  settings:
+    api_key:
+      from_secret: github_token
+    prerelease: true
+    checksum:
+    - sha256
+    checksum_file: CHECKSUMsum-riscv64.txt
+    checksum_flatten: true
+    files:
+    - "dist/artifacts/*"
+  when:
+    instance:
+    - drone-publish.rancher.io
+    event:
+    - tag
+
+- name: docker-publish
+  image: plugins/docker
+  settings:
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: "rancher/local-path-provisioner"
+    tag: "${DRONE_BRANCH}-head-riscv64"
+    username:
+      from_secret: docker_username
+  when:
+    instance:
+    - drone-publish.rancher.io
+    event:
+    - push
+
+- name: docker-tagged-publish
+  image: plugins/docker
+  settings:
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: "rancher/local-path-provisioner"
+    tag: "${DRONE_TAG}-riscv64"
+    username:
+      from_secret: docker_username
+  when:
+    instance:
+    - drone-publish.rancher.io
+    event:
+    - tag
+
+volumes:
+- name: docker
+  host:
+    path: /var/run/docker.sock
+
+---
+kind: pipeline
 name: manifest
 
 platform:
@@ -326,6 +398,7 @@ steps:
       - linux/arm64
       - linux/arm
       - linux/s390x
+      - linux/riscv64
     target: "rancher/local-path-provisioner:${DRONE_BRANCH}-head"
     template: "rancher/local-path-provisioner:${DRONE_BRANCH}-head-ARCH"
   when:
@@ -346,6 +419,7 @@ steps:
       - linux/arm64
       - linux/arm
       - linux/s390x
+      - linux/riscv64
     target: "rancher/local-path-provisioner:${DRONE_TAG}"
     template: "rancher/local-path-provisioner:${DRONE_TAG}-ARCH"
   when:
@@ -359,3 +433,4 @@ depends_on:
 - arm64
 - arm
 - s390x
+- riscv64

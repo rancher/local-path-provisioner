@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+if [ -n "$SKIP_TEST" ]; then
+    echo Skipping testing
+    exit
+fi
+
 cd $(dirname $0)/..
 
 echo Running tests

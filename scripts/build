@@ -6,7 +6,11 @@ source $(dirname $0)/version
 cd $(dirname $0)/..
 
 mkdir -p bin
-if [ "$(uname)" = "Linux" ]; then
+if [ ${ARCH} = riscv64 ]; then
+    export GOOS="linux"
+    export GOARCH="riscv64"
+fi
+if [ "$(uname)" = "Linux" ] || [ "$ARCH" = "riscv64" ]; then
     OTHER_LINKFLAGS="-extldflags -static -s -w"
 fi
 LINKFLAGS="-X main.VERSION=$VERSION"
