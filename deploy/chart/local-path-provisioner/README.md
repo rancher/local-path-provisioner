@@ -65,6 +65,7 @@ default values.
 | `storageClass.defaultVolumeType`    | The default volume type this storage class creates                              | `hostPath`                                                                          |
 | `storageClass.name`                 | The name to assign the created StorageClass                                     | local-path                                                                          |
 | `storageClass.reclaimPolicy`        | ReclaimPolicy field of the class                                                | Delete                                                                              |
+| `storageClass.pathPattern`          | Template for the volume directory name                                          | `nil`                                                                               |
 | `nodePathMap`                       | Configuration of where to store the data on each node                           | `[{node: DEFAULT_PATH_FOR_NON_LISTED_NODES, paths: [/opt/local-path-provisioner]}]` |
 | `resources`                         | Local Path Provisioner resource requests & limits                               | `{}`                                                                                |
 | `rbac.create`                       | If true, create & use RBAC resources                                            | `true`                                                                              |

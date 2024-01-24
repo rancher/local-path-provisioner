@@ -48,6 +48,9 @@ storageClass:
   ## volumeBindingMode field controls when volume binding and dynamic provisioning should occur, can be  "Immediate" or "WaitForFirstConsumer"
   volumeBindingMode: WaitForFirstConsumer
 
+  ## Set a path pattern, if unset the default will be used
+  # pathPattern: "{{ .PVC.Namespace }}-{{ .PVC.Name }}"
+
 # nodePathMap is the place user can customize where to store the data on each node.
 # 1. If one node is not listed on the nodePathMap, and Kubernetes wants to create volume on it, the paths specified in
 #    DEFAULT_PATH_FOR_NON_LISTED_NODES will be used for provisioning.
