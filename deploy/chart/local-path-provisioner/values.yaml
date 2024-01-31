@@ -129,6 +129,12 @@ configmap:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
+  resize: |-
+    #!/bin/sh
+    set -eu
+    echo "VOL_DIR: $VOL_DIR" > "$VOL_DIR/.resizerdata"
+    echo "VOL_MODE: $VOL_MODE" >> "$VOL_DIR/.resizerdata"
+    echo "VOL_SIZE_BYTES: $VOL_SIZE_BYTES" >> "$VOL_DIR/.resizerdata"
 
 # Number of provisioner worker threads to call provision/delete simultaneously.
 # workerThreads: 4

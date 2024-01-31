@@ -180,7 +180,7 @@ func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace, conf
 	}
 	value, ok := cm.Data[key]
 	if !ok {
-		return "", fmt.Errorf("%v is not exist in local-path-config ConfigMap", key)
+		return "", fmt.Errorf("%v does not exist in local-path-config ConfigMap", key)
 	}
 	return value, nil
 }
@@ -279,7 +279,7 @@ func startDaemon(c *cli.Context) error {
 		pvController.VolumesInformer(volumeInformer),
 	)
 
-	resizer := NewResizer()
+	resizer := NewResizer(provisioner)
 	rc := resizeController.NewResizeController(
 		LocalPathResizerName,
 		resizer,
