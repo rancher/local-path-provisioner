@@ -268,8 +268,9 @@ A few things to note; the annotation for the `StorageClass` will apply to all vo
 
 ### Storage classes
 
-If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`
+If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`.
 
+By default the volume subdirectory is named using the template `{{ .PVName }}_{{ .PVC.Namespace }}_{{ .PVC.Name }}` which make the directory specific to the PV instance. The template can be changed using the `pathPattern` parameter which is interpreted as a go template. The template has access to the PV name using the `PVName` variable and the PVC metadata object, including labels and annotations, with the `PVC` variable.
 ```
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -278,11 +279,12 @@ metadata:
 provisioner: rancher.io/local-path
 parameters:
   nodePath: /data/ssd
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
 
-Here the provisioner will use the path `/data/ssd` when storage class `ssd-local-path` is used.
+Here the provisioner will use the path `/data/ssd` with a subdirectory per namespace and PVC when storage class `ssd-local-path` is used.
 
 ## Uninstall
 

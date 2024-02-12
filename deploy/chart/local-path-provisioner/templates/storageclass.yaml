@@ -12,4 +12,8 @@ provisioner: {{ template "local-path-provisioner.provisionerName" . }}
 volumeBindingMode: {{ .Values.storageClass.volumeBindingMode }}
 reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
 allowVolumeExpansion: true
+{{- if .Values.storageClass.pathPattern }}
+parameters:
+  pathPattern: {{ .Values.storageClass.pathPattern | quote }}
+{{  end -}}
 {{- end }}

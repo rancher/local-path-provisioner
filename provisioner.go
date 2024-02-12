@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -246,6 +247,31 @@ func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
 	return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are unconfigured")
 }
 
+type pvMetadata struct {
+	PVName string
+	PVC    metav1.ObjectMeta
+}
+
+func pathFromPattern(pattern string, opts pvController.ProvisionOptions) (string, error) {
+	metadata := pvMetadata{
+		PVName: opts.PVName,
+		PVC: opts.PVC.ObjectMeta,
+	}
+
+	tpl, err := template.New("pathPattern").Parse(pattern)
+	if err != nil {
+		return "", err
+	}
+
+	buf := new(bytes.Buffer)
+	err = tpl.Execute(buf, metadata)
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
 func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
 	pvc := opts.PVC
 	node := opts.SelectedNode
@@ -286,6 +312,15 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 
 	name := opts.PVName
 	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
+
+	pathPattern, exists := opts.StorageClass.Parameters["pathPattern"]
+	if exists {
+		folderName, err = pathFromPattern(pathPattern, opts)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create path from pattern %v", pathPattern)
+			return nil, pvController.ProvisioningFinished, err
+		}
+	}
 
 	path := filepath.Join(basePath, folderName)
 	if nodeName == "" {
