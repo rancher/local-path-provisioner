@@ -87,6 +87,7 @@ type ConfigData struct {
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
 	SetupCommand         string             `json:"setupCommand,omitempty"`
 	TeardownCommand      string             `json:"teardownCommand,omitempty"`
+	ResizeCommand        string             `json:"resizeCommand,omitempty"`
 }
 
 type NodePathMap struct {
@@ -99,6 +100,7 @@ type Config struct {
 	SharedFileSystemPath string
 	SetupCommand         string
 	TeardownCommand      string
+	ResizeCommand        string
 }
 
 func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
@@ -526,6 +528,13 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		})
 	}
 
+	if p.config.ResizeCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "resize",
+			Path: "resize",
+		})
+	}
+
 	if len(keyToPathItems) > 0 {
 		lpvVolumes = append(lpvVolumes, v1.Volume{
 			Name: "script",
@@ -674,6 +683,7 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	cfg.SharedFileSystemPath = data.SharedFileSystemPath
 	cfg.SetupCommand = data.SetupCommand
 	cfg.TeardownCommand = data.TeardownCommand
+	cfg.ResizeCommand = data.ResizeCommand
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
 		if cfg.NodePathMap[n.Node] != nil {
