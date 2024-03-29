@@ -38,6 +38,6 @@ data:
           image: {{ .Values.helperImage.repository }}:{{ .Values.helperImage.tag }}
           {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-        resources:
-          {{- toYaml .Values.helperPod.resources | nindent 10 }}
+          resources:
+            {{- toYaml .Values.helperPod.resources | nindent 10 }}
 
