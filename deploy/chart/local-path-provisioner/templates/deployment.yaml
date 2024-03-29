@@ -9,7 +9,8 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-{{ include "local-path-provisioner.labels" . | indent 6 }}
+      app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
