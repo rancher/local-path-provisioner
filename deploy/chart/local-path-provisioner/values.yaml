@@ -115,6 +115,15 @@ resources: {}
   #   cpu: 100m
   #   memory: 128Mi
 
+helperPod:
+  resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
 rbac:
   # Specifies whether RBAC resources should be created
   create: true
