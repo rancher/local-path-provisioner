@@ -39,5 +39,5 @@ data:
           {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
-            {{- toYaml .Values.helperPod.resources | nindent 10 }}
+            {{- toYaml .Values.helperPod.resources | nindent 12 }}
 
