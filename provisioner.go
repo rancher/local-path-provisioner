@@ -169,6 +169,29 @@ func (p *LocalPathProvisioner) refreshConfig() error {
 	return err
 }
 
+func (p *LocalPathProvisioner) refreshHelperPod() error {
+	p.configMutex.Lock()
+	defer p.configMutex.Unlock()
+
+	helperPodFile, envExists := os.LookupEnv(EnvConfigMountPath)
+	if !envExists {
+		return nil
+	}
+
+	helperPodFile = filepath.Join(helperPodFile, DefaultHelperPodFile)
+	newHelperPod, err := loadFile(helperPodFile)
+	if err != nil {
+		return err
+	}
+
+	p.helperPod, err = loadHelperPodFile(newHelperPod)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	go func() {
 		ticker := time.NewTicker(ConfigFileCheckInterval)
@@ -178,6 +201,9 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 			case <-ticker.C:
 				if err := p.refreshConfig(); err != nil {
 					logrus.Errorf("failed to load the new config file: %v", err)
+				}
+				if err := p.refreshHelperPod(); err != nil {
+					logrus.Errorf("failed to load the new helper pod manifest: %v", err)
 				}
 			case <-p.ctx.Done():
 				logrus.Infof("stop watching config file")
