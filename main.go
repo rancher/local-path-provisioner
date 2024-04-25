@@ -48,6 +48,7 @@ var (
 	DefaultProvisioningRetryCount = pvController.DefaultFailedProvisionThreshold
 	FlagDeletionRetryCount        = "deletion-retry-count"
 	DefaultDeletionRetryCount     = pvController.DefaultFailedDeleteThreshold
+	EnvConfigMountPath            = "CONFIG_MOUNT_PATH"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
