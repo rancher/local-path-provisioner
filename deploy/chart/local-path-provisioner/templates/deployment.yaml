@@ -73,6 +73,8 @@ spec:
           env:
             - name: POD_NAMESPACE
               value: {{ .Release.Namespace }}
+            - name: CONFIG_MOUNT_PATH
+              value: /etc/config/
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
