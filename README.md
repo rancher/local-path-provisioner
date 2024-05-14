@@ -196,6 +196,8 @@ The helperPod is allowed to run on nodes experiencing disk pressure conditions, 
 `sharedFileSystemPath` allows the provisioner to use a filesystem that is mounted on all nodes at the same time.
 In this case all access modes are supported: `ReadWriteOnce`, `ReadOnlyMany` and `ReadWriteMany` for storage claims.
 
+`shortenedFolderName` takes a boolean value and provides configuration of the provisioner, allowing short folder names to be used. The default naming process is to structure it as `<PV name>-<PVC namespace>-<PVC name>`, but by specifying `"shortenedFolderName":true` the folder name will become `<PV name>`.
+
 `storageClassConfigs` is a map from storage class names to objects containing `nodePathMap` or `sharedFilesystemPath`, as described above.
 
 In addition `volumeBindingMode: Immediate` can be used in  StorageClass definition.

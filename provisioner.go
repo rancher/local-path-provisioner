@@ -84,6 +84,7 @@ type NodePathMapData struct {
 type StorageClassConfigData struct {
 	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
+	ShortenedFolderName  bool               `json:"shortenedFolderName,omitempty"`
 }
 
 type ConfigData struct {
@@ -97,6 +98,7 @@ type ConfigData struct {
 type StorageClassConfig struct {
 	NodePathMap          map[string]*NodePathMap
 	SharedFileSystemPath string
+	ShortenedFolderName  bool
 }
 
 type NodePathMap struct {
@@ -312,7 +314,10 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 	}
 
 	name := opts.PVName
-	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
+	folderName := name
+	if !c.ShortenedFolderName {
+		folderName = strings.Join([]string{folderName, opts.PVC.Namespace, opts.PVC.Name}, "_")
+	}
 
 	path := filepath.Join(basePath, folderName)
 	if nodeName == "" {
@@ -736,6 +741,7 @@ func canonicalizeStorageClassConfig(data *StorageClassConfigData) (cfg *StorageC
 	}()
 	cfg = &StorageClassConfig{}
 	cfg.SharedFileSystemPath = data.SharedFileSystemPath
+	cfg.ShortenedFolderName = data.ShortenedFolderName
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
 		if cfg.NodePathMap[n.Node] != nil {
