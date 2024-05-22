@@ -674,7 +674,11 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		"-s", strconv.FormatInt(o.SizeInBytes, 10),
 		"-m", string(o.Mode),
 		"-a", string(action)}
-
+	helperPod.Spec.Containers[0].SecurityContext = &v1.SecurityContext{
+		SELinuxOptions: &v1.SELinuxOptions{
+			Level: "s0-s0:c0.c1023",
+		},
+	}
 	// If it already exists due to some previous errors, the pod will be cleaned up later automatically
 	// https://github.com/rancher/local-path-provisioner/issues/27
 	logrus.Infof("create the helper pod %s into %s", helperPod.Name, p.namespace)
