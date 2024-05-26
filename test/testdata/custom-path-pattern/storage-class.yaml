@@ -1,0 +1,10 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-custom-path-pattern
+provisioner: rancher.io/local-path
+parameters:
+  nodePath: /opt/local-path-provisioner
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}"
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
