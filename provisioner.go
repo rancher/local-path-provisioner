@@ -82,12 +82,22 @@ type NodePathMapData struct {
 	Paths []string `json:"paths,omitempty"`
 }
 
-type ConfigData struct {
+type StorageClassConfigData struct {
 	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
-	CmdTimeoutSeconds    int                `json:"cmdTimeoutSeconds,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
-	SetupCommand         string             `json:"setupCommand,omitempty"`
-	TeardownCommand      string             `json:"teardownCommand,omitempty"`
+}
+
+type ConfigData struct {
+	CmdTimeoutSeconds int    `json:"cmdTimeoutSeconds,omitempty"`
+	SetupCommand      string `json:"setupCommand,omitempty"`
+	TeardownCommand   string `json:"teardownCommand,omitempty"`
+	StorageClassConfigData
+	StorageClassConfigs map[string]StorageClassConfigData `json:"storageClassConfigs"`
+}
+
+type StorageClassConfig struct {
+	NodePathMap          map[string]*NodePathMap
+	SharedFileSystemPath string
 }
 
 type NodePathMap struct {
@@ -95,11 +105,11 @@ type NodePathMap struct {
 }
 
 type Config struct {
-	NodePathMap          map[string]*NodePathMap
-	CmdTimeoutSeconds    int
-	SharedFileSystemPath string
-	SetupCommand         string
-	TeardownCommand      string
+	CmdTimeoutSeconds int
+	SetupCommand      string
+	TeardownCommand   string
+	StorageClassConfig
+	StorageClassConfigs map[string]StorageClassConfig
 }
 
 func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
@@ -178,7 +188,7 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	}()
 }
 
-func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string) (string, error) {
+func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, c *StorageClassConfig) (string, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
@@ -186,8 +196,7 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string) 
 		return "", fmt.Errorf("no valid config available")
 	}
 
-	c := p.config
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(c)
 	if err != nil {
 		return "", err
 	}
@@ -223,7 +232,7 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string) 
 	return path, nil
 }
 
-func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
+func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
@@ -231,7 +240,6 @@ func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
 		return false, fmt.Errorf("no valid config available")
 	}
 
-	c := p.config
 	if (c.SharedFileSystemPath != "") && (len(c.NodePathMap) != 0) {
 		return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are defined. Please make sure only one is in use")
 	}
@@ -247,13 +255,32 @@ func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
 	return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are unconfigured")
 }
 
+func (p *LocalPathProvisioner) pickConfig(storageClassName string) (*StorageClassConfig, error) {
+	if len(p.config.StorageClassConfigs) == 0 {
+		return &p.config.StorageClassConfig, nil
+	}
+	cfg, ok := p.config.StorageClassConfigs[storageClassName]
+	if !ok {
+		return nil, fmt.Errorf("BUG: Got request for unexpected storage class %s", storageClassName)
+	}
+	return &cfg, nil
+}
+
 func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
+	cfg, err := p.pickConfig(opts.StorageClass.Name)
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, err
+	}
+	return p.provisionFor(opts, cfg)
+}
+
+func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, c *StorageClassConfig) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
 	pvc := opts.PVC
 	node := opts.SelectedNode
 	storageClass := opts.StorageClass
 	scAnnotations := opts.StorageClass.GetAnnotations()
 	pvcAnnotations := opts.PVC.GetAnnotations()
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(c)
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
@@ -282,7 +309,7 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 			requestedPath = storageClass.Parameters["nodePath"]
 		}
 	}
-	basePath, err := p.getPathOnNode(nodeName, requestedPath)
+	basePath, err := p.getPathOnNode(nodeName, requestedPath, c)
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
@@ -319,7 +346,7 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 		HostPathType: hostPathType,
 		SizeInBytes:  storage.Value(),
 		Node:         nodeName,
-	}); err != nil {
+	}, c); err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
 
@@ -387,10 +414,19 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 }
 
 func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolume) (err error) {
+	cfg, err := p.pickConfig(pv.Spec.StorageClassName)
+	if err != nil {
+		return err
+	}
+	return p.deleteFor(pv, cfg)
+}
+
+func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClassConfig) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
-	path, node, err := p.getPathAndNodeForPV(pv)
+
+	path, node, err := p.getPathAndNodeForPV(pv, c)
 	if err != nil {
 		return err
 	}
@@ -417,7 +453,7 @@ func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolu
 		if pv.Spec.HostPath != nil {
 			volOpts.HostPathType = *pv.Spec.HostPath.Type
 		}
-		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volOpts); err != nil {
+		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volOpts, c); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
@@ -427,7 +463,7 @@ func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolu
 	return nil
 }
 
-func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (path, node string, err error) {
+func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
@@ -441,7 +477,7 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 		return "", "", fmt.Errorf("no path set")
 	}
 
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(cfg)
 	if err != nil {
 		return "", "", err
 	}
@@ -492,11 +528,11 @@ type volumeOptions struct {
 	Node         string
 }
 
-func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions) (err error) {
+func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions, cfg *StorageClassConfig) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to %v volume %v", action, o.Name)
 	}()
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(cfg)
 	if err != nil {
 		return err
 	}
@@ -683,13 +719,39 @@ func loadConfigFile(configFile string) (cfgData *ConfigData, err error) {
 }
 
 func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "config canonicalization failed")
-	}()
 	cfg = &Config{}
-	cfg.SharedFileSystemPath = data.SharedFileSystemPath
+	if len(data.StorageClassConfigs) == 0 {
+		defaultConfig, err := canonicalizeStorageClassConfig(&data.StorageClassConfigData)
+		if err != nil {
+			return nil, err
+		}
+		cfg.StorageClassConfig = *defaultConfig
+	} else {
+		cfg.StorageClassConfigs = make(map[string]StorageClassConfig, len(data.StorageClassConfigs))
+		for name, classData := range data.StorageClassConfigs {
+			classCfg, err := canonicalizeStorageClassConfig(&classData)
+			if err != nil {
+				return nil, errors.Wrap(err, fmt.Sprintf("config for class %s is invalid", name))
+			}
+			cfg.StorageClassConfigs[name] = *classCfg
+		}
+	}
 	cfg.SetupCommand = data.SetupCommand
 	cfg.TeardownCommand = data.TeardownCommand
+	if data.CmdTimeoutSeconds > 0 {
+		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
+	} else {
+		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
+	}
+	return cfg, nil
+}
+
+func canonicalizeStorageClassConfig(data *StorageClassConfigData) (cfg *StorageClassConfig, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "StorageClass config canonicalization failed")
+	}()
+	cfg = &StorageClassConfig{}
+	cfg.SharedFileSystemPath = data.SharedFileSystemPath
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
 		if cfg.NodePathMap[n.Node] != nil {
@@ -713,11 +775,6 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 			}
 			npMap.Paths[path] = struct{}{}
 		}
-	}
-	if data.CmdTimeoutSeconds > 0 {
-		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
-	} else {
-		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
 	}
 
 	return cfg, nil

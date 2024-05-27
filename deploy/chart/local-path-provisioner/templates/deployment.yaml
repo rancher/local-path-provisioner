@@ -18,8 +18,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
-        app.kubernetes.io/instance: {{ .Release.Name }}
 {{ include "local-path-provisioner.labels" . | indent 8 }}
     spec:
     {{- with .Values.imagePullSecrets }}
