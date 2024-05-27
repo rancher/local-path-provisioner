@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	hostPathVolumeType = "hostPath"
-	localVolumeType    = "local"
+	hostPathVolumeType        = "hostPath"
+	localVolumeType           = "local"
+	hostPathDirectoryOrCreate = "DirectoryOrCreate"
+	hostPathDirectory         = "Directory"
 )
 
 type PodTestSuite struct {
@@ -81,38 +83,38 @@ func TestPVCTestSuite(t *testing.T) {
 func (p *PodTestSuite) TestPodWithHostPathVolume() {
 	p.kustomizeDir = "pod"
 
-	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectoryOrCreate)
 }
 
 func (p *PodTestSuite) TestPodWithLocalVolume() {
 	p.kustomizeDir = "pod-with-local-volume"
 
-	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType, "")
 }
 
 func (p *PodTestSuite) TestPodWithLocalVolumeDefault() {
 	p.kustomizeDir = "pod-with-default-local-volume"
 
-	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType, "")
 }
 
 func (p *PodTestSuite) TestPodWithNodeAffinity() {
 	p.kustomizeDir = "pod-with-node-affinity"
 
-	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectoryOrCreate)
 }
 
 func (p *PodTestSuite) TestPodWithRWOPVolume() {
 	p.kustomizeDir = "pod-with-rwop-volume"
 
-	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType, hostPathDirectoryOrCreate)
 }
 
 func (p *PodTestSuite) TestPodWithSecurityContext() {
 	p.kustomizeDir = "pod-with-security-context"
 	kustomizeDir := testdataFile(p.kustomizeDir)
 
-	runTest(p, []string{p.config.IMAGE}, "podscheduled", hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "podscheduled", hostPathVolumeType, hostPathDirectoryOrCreate)
 
 	cmd := fmt.Sprintf(`kubectl get pod -l %s=%s -o=jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].reason}'`, LabelKey, LabelValue)
 
@@ -141,16 +143,28 @@ loop:
 func (p *PodTestSuite) TestPodWithSubpath() {
 	p.kustomizeDir = "pod-with-subpath"
 
-	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectoryOrCreate)
 }
 
 func (p *PodTestSuite) TestPodWithMultipleStorageClasses() {
 	p.kustomizeDir = "multiple-storage-classes"
 
-	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectoryOrCreate)
 }
 
-func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string) {
+func (p *PodTestSuite) TestPodWithHostPathType() {
+	p.kustomizeDir = "pod-with-host-path-type"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectory)
+}
+
+func (p *PodTestSuite) TestPodWithDefaultHostPathType() {
+	p.kustomizeDir = "pod-with-default-host-path-type"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectory)
+}
+
+func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string, hostPathType string) {
 	kustomizeDir := testdataFile(p.kustomizeDir)
 
 	var cmds []string
@@ -189,5 +203,16 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 	}
 	if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
 		p.FailNow("volume Type not correct")
+	}
+	if volumeType == hostPathVolumeType {
+		hostPathTypeCheckCmd := fmt.Sprintf("kubectl get pv $(%s) -o jsonpath='{.spec.hostPath.type}'", "kubectl get pv -o jsonpath='{.items[0].metadata.name}'")
+		c := createCmd(p.T(), hostPathTypeCheckCmd, kustomizeDir, p.config.envs(), nil)
+		hostPathTypeCheckOutput, err := c.CombinedOutput()
+		if err != nil {
+			p.FailNow("", "failed to check type of host path volume: %v", err)
+		}
+		if string(hostPathTypeCheckOutput) != hostPathType {
+			p.FailNow("type of host path volume not correct")
+		}
 	}
 }
