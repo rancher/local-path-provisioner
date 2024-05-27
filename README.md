@@ -27,7 +27,7 @@ In this setup, the directory `/opt/local-path-provisioner` will be used across a
 
 - Stable
 ```
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
 ```
 
 - Development
@@ -38,7 +38,7 @@ kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisione
 Or, use `kustomize` to deploy.
 - Stable
 ```
-kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=v0.0.24" | kubectl apply -f -
+kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=v0.0.26" | kubectl apply -f -
 ```
 
 - Development
@@ -171,11 +171,18 @@ data:
         metadata:
           name: helper-pod
         spec:
+          priorityClassName: system-node-critical
+          tolerations:
+            - key: node.kubernetes.io/disk-pressure
+              operator: Exists
+              effect: NoSchedule
           containers:
           - name: helper-pod
             image: busybox
 
 ```
+
+The helperPod is allowed to run on nodes experiencing disk pressure conditions, despite the potential resource constraints. When it runs on such a node, it can carry out specific cleanup tasks, freeing up space in PVCs, and resolving the disk-pressure issue.
 
 #### `config.json`
 
@@ -189,9 +196,21 @@ data:
 `sharedFileSystemPath` allows the provisioner to use a filesystem that is mounted on all nodes at the same time.
 In this case all access modes are supported: `ReadWriteOnce`, `ReadOnlyMany` and `ReadWriteMany` for storage claims.
 
+`storageClassConfigs` is a map from storage class names to objects containing `nodePathMap` or `sharedFilesystemPath`, as described above.
+
 In addition `volumeBindingMode: Immediate` can be used in  StorageClass definition.
 
-Please note that `nodePathMap` and `sharedFileSystemPath` are mutually exclusive. If `sharedFileSystemPath` is used, then `nodePathMap` must be set to `[]`.
+Please note that `nodePathMap`, `sharedFileSystemPath`, and `storageClassConfigs` are mutually exclusive. If `sharedFileSystemPath` or `stroageClassConfigs` are used, then `nodePathMap` must be set to `[]`.
+
+The `setupCommand` and `teardownCommand` allow you to specify the path to binary files in helperPod that will be called when creating or deleting pvc respectively. This can be useful if you need to use distroless images for security reasons. See the examples/distroless directory for an example. A binary file can take the following parameters:
+| Parameter | Description |
+| -------------------- | ----------- |
+| -p | Volume directory that should be created or removed. | -m | -p | Volume directory that should be created or removed. |
+| -m | The PersistentVolume mode (`Block` or `Filesystem`). | -m | The PersistentVolume mode (`Block` or `Filesystem`). |
+| -s | Requested volume size in bytes. | -s | Requested volume size in bytes. |
+| -a | Action type. Can be `create` or `delete` | -a | -a | Action type.
+
+The `setupCommand` and `teardownCommand` have higher priority than the `setup` and `teardown` scripts from the ConfigMap.  
 
 ##### Rules
 The configuration must obey following rules:
@@ -217,7 +236,12 @@ The scripts receive their input as environment variables:
 
 #### Reloading
 
-The provisioner supports automatic configuration reloading. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. There is a delay between when the user updates the config map and the provisioner picking it up.
+The provisioner supports automatic configuration reloading. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. There is a delay between when the user updates the config map and the provisioner picking it up. In order for this to occur for updates made to the helper pod manifest, the following environment variable must be added to the provisioner container. If not, then the manifest used for the helper pod will be the same as what was in the config map when the provisioner was last restarted/deployed.
+
+```yaml
+- name: CONFIG_MOUNT_PATH
+  value: /etc/config/
+```
 
 When the provisioner detects the configuration changes, it will try to load the new configuration. Users can observe it in the log
 >time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-path-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
@@ -235,7 +259,7 @@ If the reload fails, the provisioner will log the error and **continue using the
 
 To specify the type of volume you want the provisioner to create, add either of the following annotations;
 
-- PVC: 
+- PVC:
 ```yaml
 annotations:
   volumeType: <local or hostPath>
@@ -251,21 +275,23 @@ A few things to note; the annotation for the `StorageClass` will apply to all vo
 
 ### Storage classes
 
-If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`
+If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`.
 
+By default the volume subdirectory is named using the template `{{ .PVName }}_{{ .PVC.Namespace }}_{{ .PVC.Name }}` which make the directory specific to the PV instance. The template can be changed using the `pathPattern` parameter which is interpreted as a go template. The template has access to the PV name using the `PVName` variable and the PVC metadata object, including labels and annotations, with the `PVC` variable.
 ```
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: ssd-local-path
-provisioner: cluster.local/local-path-provisioner
+provisioner: rancher.io/local-path
 parameters:
   nodePath: /data/ssd
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
 
-Here the provisioner will use the path `/data/ssd` when storage class `ssd-local-path` is used.
+Here the provisioner will use the path `/data/ssd` with a subdirectory per namespace and PVC when storage class `ssd-local-path` is used.
 
 ## Uninstall
 
@@ -275,7 +301,7 @@ To uninstall, execute:
 
 - Stable
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
 ```
 
 - Development

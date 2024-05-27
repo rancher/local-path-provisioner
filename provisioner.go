@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -18,6 +21,7 @@ import (
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
 )
@@ -78,10 +82,22 @@ type NodePathMapData struct {
 	Paths []string `json:"paths,omitempty"`
 }
 
-type ConfigData struct {
+type StorageClassConfigData struct {
 	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
-	CmdTimeoutSeconds    int                `json:"cmdTimeoutSeconds,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
+}
+
+type ConfigData struct {
+	CmdTimeoutSeconds int    `json:"cmdTimeoutSeconds,omitempty"`
+	SetupCommand      string `json:"setupCommand,omitempty"`
+	TeardownCommand   string `json:"teardownCommand,omitempty"`
+	StorageClassConfigData
+	StorageClassConfigs map[string]StorageClassConfigData `json:"storageClassConfigs"`
+}
+
+type StorageClassConfig struct {
+	NodePathMap          map[string]*NodePathMap
+	SharedFileSystemPath string
 }
 
 type NodePathMap struct {
@@ -89,9 +105,11 @@ type NodePathMap struct {
 }
 
 type Config struct {
-	NodePathMap          map[string]*NodePathMap
-	CmdTimeoutSeconds    int
-	SharedFileSystemPath string
+	CmdTimeoutSeconds int
+	SetupCommand      string
+	TeardownCommand   string
+	StorageClassConfig
+	StorageClassConfigs map[string]StorageClassConfig
 }
 
 func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
@@ -152,6 +170,29 @@ func (p *LocalPathProvisioner) refreshConfig() error {
 	return err
 }
 
+func (p *LocalPathProvisioner) refreshHelperPod() error {
+	p.configMutex.Lock()
+	defer p.configMutex.Unlock()
+
+	helperPodFile, envExists := os.LookupEnv(EnvConfigMountPath)
+	if !envExists {
+		return nil
+	}
+
+	helperPodFile = filepath.Join(helperPodFile, DefaultHelperPodFile)
+	newHelperPod, err := loadFile(helperPodFile)
+	if err != nil {
+		return err
+	}
+
+	p.helperPod, err = loadHelperPodFile(newHelperPod)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	go func() {
 		ticker := time.NewTicker(ConfigFileCheckInterval)
@@ -162,6 +203,9 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 				if err := p.refreshConfig(); err != nil {
 					logrus.Errorf("failed to load the new config file: %v", err)
 				}
+				if err := p.refreshHelperPod(); err != nil {
+					logrus.Errorf("failed to load the new helper pod manifest: %v", err)
+				}
 			case <-p.ctx.Done():
 				logrus.Infof("stop watching config file")
 				return
@@ -170,7 +214,7 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	}()
 }
 
-func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string) (string, error) {
+func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, c *StorageClassConfig) (string, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
@@ -178,8 +222,7 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string) 
 		return "", fmt.Errorf("no valid config available")
 	}
 
-	c := p.config
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(c)
 	if err != nil {
 		return "", err
 	}
@@ -215,7 +258,7 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string) 
 	return path, nil
 }
 
-func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
+func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
@@ -223,7 +266,6 @@ func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
 		return false, fmt.Errorf("no valid config available")
 	}
 
-	c := p.config
 	if (c.SharedFileSystemPath != "") && (len(c.NodePathMap) != 0) {
 		return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are defined. Please make sure only one is in use")
 	}
@@ -239,11 +281,55 @@ func (p *LocalPathProvisioner) isSharedFilesystem() (bool, error) {
 	return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are unconfigured")
 }
 
+func (p *LocalPathProvisioner) pickConfig(storageClassName string) (*StorageClassConfig, error) {
+	if len(p.config.StorageClassConfigs) == 0 {
+		return &p.config.StorageClassConfig, nil
+	}
+	cfg, ok := p.config.StorageClassConfigs[storageClassName]
+	if !ok {
+		return nil, fmt.Errorf("BUG: Got request for unexpected storage class %s", storageClassName)
+	}
+	return &cfg, nil
+}
+
+type pvMetadata struct {
+	PVName string
+	PVC    metav1.ObjectMeta
+}
+
+func pathFromPattern(pattern string, opts pvController.ProvisionOptions) (string, error) {
+	metadata := pvMetadata{
+		PVName: opts.PVName,
+		PVC: opts.PVC.ObjectMeta,
+	}
+
+	tpl, err := template.New("pathPattern").Parse(pattern)
+	if err != nil {
+		return "", err
+	}
+
+	buf := new(bytes.Buffer)
+	err = tpl.Execute(buf, metadata)
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
 func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
+	cfg, err := p.pickConfig(opts.StorageClass.Name)
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, err
+	}
+	return p.provisionFor(opts, cfg)
+}
+
+func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, c *StorageClassConfig) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
 	pvc := opts.PVC
 	node := opts.SelectedNode
 	storageClass := opts.StorageClass
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(c)
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
@@ -252,8 +338,8 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 			return nil, pvController.ProvisioningFinished, fmt.Errorf("claim.Spec.Selector is not supported")
 		}
 		for _, accessMode := range pvc.Spec.AccessModes {
-			if accessMode != v1.ReadWriteOnce {
-				return nil, pvController.ProvisioningFinished, fmt.Errorf("Only support ReadWriteOnce access mode")
+			if accessMode != v1.ReadWriteOnce && accessMode != v1.ReadWriteOncePod {
+				return nil, pvController.ProvisioningFinished, fmt.Errorf("NodePath only supports ReadWriteOnce and ReadWriteOncePod (1.22+) access modes")
 			}
 		}
 		if node == nil {
@@ -272,13 +358,22 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 			requestedPath = storageClass.Parameters["nodePath"]
 		}
 	}
-	basePath, err := p.getPathOnNode(nodeName, requestedPath)
+	basePath, err := p.getPathOnNode(nodeName, requestedPath, c)
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
 
 	name := opts.PVName
 	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
+
+	pathPattern, exists := opts.StorageClass.Parameters["pathPattern"]
+	if exists {
+		folderName, err = pathFromPattern(pathPattern, opts)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create path from pattern %v", pathPattern)
+			return nil, pvController.ProvisioningFinished, err
+		}
+	}
 
 	path := filepath.Join(basePath, folderName)
 	if nodeName == "" {
@@ -288,14 +383,19 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 	}
 
 	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	provisionCmd := []string{"/bin/sh", "/script/setup"}
+	provisionCmd := make([]string, 0, 2)
+	if p.config.SetupCommand == "" {
+		provisionCmd = append(provisionCmd, "/bin/sh", "/script/setup")
+	} else {
+		provisionCmd = append(provisionCmd, p.config.SetupCommand)
+	}
 	if err := p.createHelperPod(ActionTypeCreate, provisionCmd, volumeOptions{
 		Name:        name,
 		Path:        path,
 		Mode:        *pvc.Spec.VolumeMode,
 		SizeInBytes: storage.Value(),
 		Node:        nodeName,
-	}); err != nil {
+	}, c); err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
 
@@ -363,10 +463,19 @@ func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.
 }
 
 func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolume) (err error) {
+	cfg, err := p.pickConfig(pv.Spec.StorageClassName)
+	if err != nil {
+		return err
+	}
+	return p.deleteFor(pv, cfg)
+}
+
+func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClassConfig) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
-	path, node, err := p.getPathAndNodeForPV(pv)
+
+	path, node, err := p.getPathAndNodeForPV(pv, c)
 	if err != nil {
 		return err
 	}
@@ -377,14 +486,19 @@ func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolu
 			logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
 		}
 		storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
-		cleanupCmd := []string{"/bin/sh", "/script/teardown"}
+		cleanupCmd := make([]string, 0, 2)
+		if p.config.TeardownCommand == "" {
+			cleanupCmd = append(cleanupCmd, "/bin/sh", "/script/teardown")
+		} else {
+			cleanupCmd = append(cleanupCmd, p.config.TeardownCommand)
+		}
 		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volumeOptions{
 			Name:        pv.Name,
 			Path:        path,
 			Mode:        *pv.Spec.VolumeMode,
 			SizeInBytes: storage.Value(),
 			Node:        node,
-		}); err != nil {
+		}, c); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
@@ -394,7 +508,7 @@ func (p *LocalPathProvisioner) Delete(ctx context.Context, pv *v1.PersistentVolu
 	return nil
 }
 
-func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (path, node string, err error) {
+func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
@@ -408,7 +522,7 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 		return "", "", fmt.Errorf("no path set")
 	}
 
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(cfg)
 	if err != nil {
 		return "", "", err
 	}
@@ -458,11 +572,11 @@ type volumeOptions struct {
 	Node        string
 }
 
-func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions) (err error) {
+func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions, cfg *StorageClassConfig) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to %v volume %v", action, o.Name)
 	}()
-	sharedFS, err := p.isSharedFilesystem()
+	sharedFS, err := p.isSharedFilesystem(cfg)
 	if err != nil {
 		return err
 	}
@@ -485,26 +599,6 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 				},
 			},
 		},
-		{
-			Name: helperScriptVolName,
-			VolumeSource: v1.VolumeSource{
-				ConfigMap: &v1.ConfigMapVolumeSource{
-					LocalObjectReference: v1.LocalObjectReference{
-						Name: p.configMapName,
-					},
-					Items: []v1.KeyToPath{
-						{
-							Key:  "setup",
-							Path: "setup",
-						},
-						{
-							Key:  "teardown",
-							Path: "teardown",
-						},
-					},
-				},
-			},
-		},
 	}
 	lpvTolerations := []v1.Toleration{
 		{
@@ -513,8 +607,39 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	}
 	helperPod := p.helperPod.DeepCopy()
 
-	scriptMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperScriptVolName, helperScriptDir)
-	scriptMount.MountPath = helperScriptDir
+	keyToPathItems := make([]v1.KeyToPath, 0, 2)
+
+	if p.config.SetupCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "setup",
+			Path: "setup",
+		})
+	}
+
+	if p.config.TeardownCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "teardown",
+			Path: "teardown",
+		})
+	}
+
+	if len(keyToPathItems) > 0 {
+		lpvVolumes = append(lpvVolumes, v1.Volume{
+			Name: "script",
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: p.configMapName,
+					},
+					Items: keyToPathItems,
+				},
+			},
+		})
+
+		scriptMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperScriptVolName, helperScriptDir)
+		scriptMount.MountPath = helperScriptDir
+	}
+
 	dataMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperDataVolName, parentDir)
 	parentDir = dataMount.MountPath
 	parentDir = strings.TrimSuffix(parentDir, string(filepath.Separator))
@@ -539,7 +664,6 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	if o.Node != "" {
 		helperPod.Spec.NodeName = o.Node
 	}
-	privileged := true
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
 	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
 	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
@@ -548,20 +672,26 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	helperPod.Spec.Containers[0].Env = append(helperPod.Spec.Containers[0].Env, env...)
 	helperPod.Spec.Containers[0].Args = []string{"-p", filepath.Join(parentDir, volumeDir),
 		"-s", strconv.FormatInt(o.SizeInBytes, 10),
-		"-m", string(o.Mode)}
+		"-m", string(o.Mode),
+		"-a", string(action)}
 	helperPod.Spec.Containers[0].SecurityContext = &v1.SecurityContext{
-		Privileged: &privileged,
+		SELinuxOptions: &v1.SELinuxOptions{
+			Level: "s0-s0:c0.c1023",
+		},
 	}
-
 	// If it already exists due to some previous errors, the pod will be cleaned up later automatically
 	// https://github.com/rancher/local-path-provisioner/issues/27
 	logrus.Infof("create the helper pod %s into %s", helperPod.Name, p.namespace)
-	_, err = p.kubeClient.CoreV1().Pods(p.namespace).Create(context.TODO(), helperPod, metav1.CreateOptions{})
+	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(context.TODO(), helperPod, metav1.CreateOptions{})
 	if err != nil && !k8serror.IsAlreadyExists(err) {
 		return err
 	}
 
 	defer func() {
+		// log helper pod logs to the controller
+		if err := saveHelperPodLogs(pod); err != nil {
+			logrus.Error(err.Error())
+		}
 		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(context.TODO(), helperPod.Name, metav1.DeleteOptions{})
 		if e != nil {
 			logrus.Errorf("unable to delete the helper pod: %v", e)
@@ -638,10 +768,38 @@ func loadConfigFile(configFile string) (cfgData *ConfigData, err error) {
 }
 
 func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "config canonicalization failed")
-	}()
 	cfg = &Config{}
+	if len(data.StorageClassConfigs) == 0 {
+		defaultConfig, err := canonicalizeStorageClassConfig(&data.StorageClassConfigData)
+		if err != nil {
+			return nil, err
+		}
+		cfg.StorageClassConfig = *defaultConfig
+	} else {
+		cfg.StorageClassConfigs = make(map[string]StorageClassConfig, len(data.StorageClassConfigs))
+		for name, classData := range data.StorageClassConfigs {
+			classCfg, err := canonicalizeStorageClassConfig(&classData)
+			if err != nil {
+				return nil, errors.Wrap(err, fmt.Sprintf("config for class %s is invalid", name))
+			}
+			cfg.StorageClassConfigs[name] = *classCfg
+		}
+	}
+	cfg.SetupCommand = data.SetupCommand
+	cfg.TeardownCommand = data.TeardownCommand
+	if data.CmdTimeoutSeconds > 0 {
+		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
+	} else {
+		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
+	}
+	return cfg, nil
+}
+
+func canonicalizeStorageClassConfig(data *StorageClassConfigData) (cfg *StorageClassConfig, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "StorageClass config canonicalization failed")
+	}()
+	cfg = &StorageClassConfig{}
 	cfg.SharedFileSystemPath = data.SharedFileSystemPath
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
@@ -667,11 +825,7 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 			npMap.Paths[path] = struct{}{}
 		}
 	}
-	if data.CmdTimeoutSeconds > 0 {
-		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
-	} else {
-		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
-	}
+
 	return cfg, nil
 }
 
@@ -700,4 +854,51 @@ func createPersistentVolumeSource(volumeType string, path string) (pvs v1.Persis
 	}
 
 	return pvs, nil
+}
+
+// saveHelperPodLogs takes what is in stdout/stderr from the helper
+// pod and logs it to the provisioner's logs. Returns an error if we
+// can't retrieve the helper pod logs.
+func saveHelperPodLogs(pod *v1.Pod) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to save %s logs", pod.Name)
+	}()
+
+	// save helper pod logs
+	podLogOpts := v1.PodLogOptions{
+		Container: "helper-pod",
+	}
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve in cluster config: %s", err.Error())
+	}
+	// creates the clientset
+	clientset, err := clientset.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("unable to get access to k8s: %s", err.Error())
+	}
+	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
+	podLogs, err := req.Stream(context.TODO())
+	if err != nil {
+		return fmt.Errorf("error in opening stream: %s", err.Error())
+	}
+
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, podLogs)
+	if err != nil {
+		return fmt.Errorf("error in copying information from podLogs to buf: %s", err.Error())
+	}
+	podLogs.Close()
+
+	// log all messages from the helper pod to the controller
+	logrus.Infof("Start of %s logs", pod.Name)
+	bufferStr := buf.String()
+	if len(bufferStr) > 0 {
+		helperPodLogs := strings.Split(strings.Trim(bufferStr, "\n"), "\n")
+		for _, log := range helperPodLogs {
+			logrus.Info(log)
+		}
+	}
+	logrus.Infof("End of %s logs", pod.Name)
+	return nil
 }

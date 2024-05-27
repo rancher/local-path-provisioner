@@ -18,8 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
-        app.kubernetes.io/instance: {{ .Release.Name }}
+{{ include "local-path-provisioner.labels" . | indent 8 }}
     spec:
     {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -58,15 +57,15 @@ spec:
             - {{ .Values.configmap.name }}
           {{- if .Values.workerThreads }}
             - --worker-threads
-            - {{ .Values.workerThreads }}
+            - {{ .Values.workerThreads | quote }}
           {{- end }}
           {{- if .Values.provisioningRetryCount }}
             - --provisioning-retry-count
-            - {{ .Values.provisioningRetryCount }}
+            - {{ .Values.provisioningRetryCount | quote }}
           {{- end }}
           {{- if .Values.deletionRetryCount }}
             - --deletion-retry-count
-            - {{ .Values.deletionRetryCount }}
+            - {{ .Values.deletionRetryCount | quote }}
           {{- end }}
           volumeMounts:
             - name: config-volume
@@ -74,6 +73,8 @@ spec:
           env:
             - name: POD_NAMESPACE
               value: {{ .Release.Namespace }}
+            - name: CONFIG_MOUNT_PATH
+              value: /etc/config/
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:

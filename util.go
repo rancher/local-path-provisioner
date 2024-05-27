@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 
 	v1 "k8s.io/api/core/v1"
@@ -16,7 +16,7 @@ func loadFile(filepath string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	helperPodYaml, err := ioutil.ReadAll(f)
+	helperPodYaml, err := io.ReadAll(f)
 	if err != nil {
 		return "", err
 	}

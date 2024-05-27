@@ -5,11 +5,12 @@ package test
 
 import (
 	"fmt"
-	"github.com/kelseyhightower/envconfig"
-	"github.com/stretchr/testify/suite"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kelseyhightower/envconfig"
+	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -102,6 +103,12 @@ func (p *PodTestSuite) TestPodWithNodeAffinity() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+func (p *PodTestSuite) TestPodWithRWOPVolume() {
+	p.kustomizeDir = "pod-with-rwop-volume"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+}
+
 func (p *PodTestSuite) TestPodWithSecurityContext() {
 	p.kustomizeDir = "pod-with-security-context"
 	kustomizeDir := testdataFile(p.kustomizeDir)
@@ -134,6 +141,18 @@ loop:
 
 func (p *PodTestSuite) TestPodWithSubpath() {
 	p.kustomizeDir = "pod-with-subpath"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
+func (p *PodTestSuite) TestPodWithMultipleStorageClasses() {
+	p.kustomizeDir = "multiple-storage-classes"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
+func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
+	p.kustomizeDir = "custom-path-pattern"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }

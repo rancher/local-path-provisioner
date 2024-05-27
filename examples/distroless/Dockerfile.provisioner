@@ -1,0 +1,21 @@
+FROM golang:1.21.4-alpine AS builder
+
+ARG GIT_REPO
+ARG GIT_BRANCH
+
+RUN apk add --no-cache git
+
+ENV GIT_REPO=$GIT_REPO
+ENV GIT_BRANCH=$GIT_BRANCH
+
+RUN mkdir /src && \
+    git clone --depth 1 --branch "${GIT_BRANCH}" "${GIT_REPO}" /src && \
+    cd /src && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.VERSION=dev -extldflags -static -s -w" -o /local-path-provisioner && \
+    chmod 777 /local-path-provisioner
+
+FROM scratch
+
+COPY --from=builder /local-path-provisioner /local-path-provisioner
+
+ENTRYPOINT [ "/local-path-provisioner" ]
