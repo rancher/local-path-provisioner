@@ -7,4 +7,4 @@ parameters:
   nodePath: /opt/local-path-provisioner
   pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}"
 volumeBindingMode: WaitForFirstConsumer
-reclaimPolicy: Retain
+reclaimPolicy: Delete
