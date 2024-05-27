@@ -268,6 +268,25 @@ annotations:
 
 A few things to note; the annotation for the `StorageClass` will apply to all volumes using it and is superseded by the annotation on the PVC if one is provided. If neither of the annotations was provided then we default to `hostPath`.
 
+### HostPath Types
+
+To specify the type of hostPath volume you want the provisioner to create, add either of the following annotations;
+
+- PVC:
+```yaml
+annotations:
+  hostPathType: <DirectoryOrCreate or Directory>
+```
+
+- StorageClass:
+```yaml
+annotations:
+  defaultHostPathType: <DirectoryOrCreate or Directory>
+```
+
+A few things to note; the annotation for the `StorageClass` will apply to all volumes using it and is superseded by the annotation on the PVC if one is provided. If neither of the annotations was provided then we default to `DirectoryOrCreate`.
+This setting will also apply to the mount type of the parent directory during provisioning.
+
 ### Storage classes
 
 If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`
