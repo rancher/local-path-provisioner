@@ -44,6 +44,8 @@ storageClass:
 
   ## parameters configures the volumes belonging to the storage class
   parameters: {}
+    # # Set a path pattern, if unset the default will be used
+    # pathPattern: "{{ .PVC.Namespace }}-{{ .PVC.Name }}"
 
   ## ReclaimPolicy field of the class, which can be either Delete or Retain
   reclaimPolicy: Delete
