@@ -5,11 +5,12 @@ package test
 
 import (
 	"fmt"
-	"github.com/kelseyhightower/envconfig"
-	"github.com/stretchr/testify/suite"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kelseyhightower/envconfig"
+	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -162,6 +163,12 @@ func (p *PodTestSuite) TestPodWithDefaultHostPathType() {
 	p.kustomizeDir = "pod-with-default-host-path-type"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectory)
+}
+
+func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
+	p.kustomizeDir = "custom-path-pattern"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType, hostPathDirectoryOrCreate)
 }
 
 func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string, hostPathType string) {

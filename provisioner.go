@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -170,6 +171,29 @@ func (p *LocalPathProvisioner) refreshConfig() error {
 	return err
 }
 
+func (p *LocalPathProvisioner) refreshHelperPod() error {
+	p.configMutex.Lock()
+	defer p.configMutex.Unlock()
+
+	helperPodFile, envExists := os.LookupEnv(EnvConfigMountPath)
+	if !envExists {
+		return nil
+	}
+
+	helperPodFile = filepath.Join(helperPodFile, DefaultHelperPodFile)
+	newHelperPod, err := loadFile(helperPodFile)
+	if err != nil {
+		return err
+	}
+
+	p.helperPod, err = loadHelperPodFile(newHelperPod)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	go func() {
 		ticker := time.NewTicker(ConfigFileCheckInterval)
@@ -179,6 +203,9 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 			case <-ticker.C:
 				if err := p.refreshConfig(); err != nil {
 					logrus.Errorf("failed to load the new config file: %v", err)
+				}
+				if err := p.refreshHelperPod(); err != nil {
+					logrus.Errorf("failed to load the new helper pod manifest: %v", err)
 				}
 			case <-p.ctx.Done():
 				logrus.Infof("stop watching config file")
@@ -266,6 +293,31 @@ func (p *LocalPathProvisioner) pickConfig(storageClassName string) (*StorageClas
 	return &cfg, nil
 }
 
+type pvMetadata struct {
+	PVName string
+	PVC    metav1.ObjectMeta
+}
+
+func pathFromPattern(pattern string, opts pvController.ProvisionOptions) (string, error) {
+	metadata := pvMetadata{
+		PVName: opts.PVName,
+		PVC: opts.PVC.ObjectMeta,
+	}
+
+	tpl, err := template.New("pathPattern").Parse(pattern)
+	if err != nil {
+		return "", err
+	}
+
+	buf := new(bytes.Buffer)
+	err = tpl.Execute(buf, metadata)
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
 func (p *LocalPathProvisioner) Provision(ctx context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
 	cfg, err := p.pickConfig(opts.StorageClass.Name)
 	if err != nil {
@@ -316,6 +368,15 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 
 	name := opts.PVName
 	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
+
+	pathPattern, exists := opts.StorageClass.Parameters["pathPattern"]
+	if exists {
+		folderName, err = pathFromPattern(pathPattern, opts)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create path from pattern %v", pathPattern)
+			return nil, pvController.ProvisioningFinished, err
+		}
+	}
 
 	path := filepath.Join(basePath, folderName)
 	if nodeName == "" {
@@ -629,7 +690,11 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		"-s", strconv.FormatInt(o.SizeInBytes, 10),
 		"-m", string(o.Mode),
 		"-a", string(action)}
-
+	helperPod.Spec.Containers[0].SecurityContext = &v1.SecurityContext{
+		SELinuxOptions: &v1.SELinuxOptions{
+			Level: "s0-s0:c0.c1023",
+		},
+	}
 	// If it already exists due to some previous errors, the pod will be cleaned up later automatically
 	// https://github.com/rancher/local-path-provisioner/issues/27
 	logrus.Infof("create the helper pod %s into %s", helperPod.Name, p.namespace)

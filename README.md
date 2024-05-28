@@ -236,7 +236,12 @@ The scripts receive their input as environment variables:
 
 #### Reloading
 
-The provisioner supports automatic configuration reloading. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. There is a delay between when the user updates the config map and the provisioner picking it up.
+The provisioner supports automatic configuration reloading. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. There is a delay between when the user updates the config map and the provisioner picking it up. In order for this to occur for updates made to the helper pod manifest, the following environment variable must be added to the provisioner container. If not, then the manifest used for the helper pod will be the same as what was in the config map when the provisioner was last restarted/deployed.
+
+```yaml
+- name: CONFIG_MOUNT_PATH
+  value: /etc/config/
+```
 
 When the provisioner detects the configuration changes, it will try to load the new configuration. Users can observe it in the log
 >time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-path-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
@@ -289,8 +294,9 @@ This setting will also apply to the mount type of the parent directory during pr
 
 ### Storage classes
 
-If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`
+If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`.
 
+By default the volume subdirectory is named using the template `{{ .PVName }}_{{ .PVC.Namespace }}_{{ .PVC.Name }}` which make the directory specific to the PV instance. The template can be changed using the `pathPattern` parameter which is interpreted as a go template. The template has access to the PV name using the `PVName` variable and the PVC metadata object, including labels and annotations, with the `PVC` variable.
 ```
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -299,11 +305,12 @@ metadata:
 provisioner: rancher.io/local-path
 parameters:
   nodePath: /data/ssd
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
 
-Here the provisioner will use the path `/data/ssd` when storage class `ssd-local-path` is used.
+Here the provisioner will use the path `/data/ssd` with a subdirectory per namespace and PVC when storage class `ssd-local-path` is used.
 
 ## Uninstall
 
