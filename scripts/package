@@ -6,7 +6,7 @@ source $(dirname $0)/version
 cd $(dirname $0)/..
 
 mkdir -p dist/artifacts
-cp bin/local-path-provisioner dist/artifacts/local-path-provisioner${SUFFIX}
+cp bin/local-path-provisioner* dist/artifacts/
 
 IMAGE=${REPO}/local-path-provisioner:${TAG}
 DOCKERFILE=package/Dockerfile
@@ -14,7 +14,7 @@ if [ -e ${DOCKERFILE}.${ARCH} ]; then
     DOCKERFILE=${DOCKERFILE}.${ARCH}
 fi
 
-docker build -f ${DOCKERFILE} -t ${IMAGE} .
+buildx build --load -t ${IMAGE} -f ${DOCKERFILE} .
 echo Built ${IMAGE}
 
 echo ${IMAGE} > ./bin/latest_image
