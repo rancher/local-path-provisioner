@@ -27,7 +27,7 @@ In this setup, the directory `/opt/local-path-provisioner` will be used across a
 
 - Stable
 ```
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.27/deploy/local-path-storage.yaml
 ```
 
 - Development
@@ -38,7 +38,7 @@ kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisione
 Or, use `kustomize` to deploy.
 - Stable
 ```
-kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=v0.0.26" | kubectl apply -f -
+kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=v0.0.27" | kubectl apply -f -
 ```
 
 - Development
@@ -301,7 +301,7 @@ To uninstall, execute:
 
 - Stable
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.27/deploy/local-path-storage.yaml
 ```
 
 - Development
