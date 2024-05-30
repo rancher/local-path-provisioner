@@ -12,6 +12,7 @@ import (
 )
 
 func createCmd(t *testing.T, cmd, kustomizeDir string, envs []string, callback func(*exec.Cmd)) *exec.Cmd {
+	t.Logf("creating command: %s", cmd)
 	c := exec.Command("bash", "-c", cmd)
 	c.Env = append(os.Environ(), envs...)
 	c.Dir = kustomizeDir
