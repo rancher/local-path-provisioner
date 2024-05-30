@@ -67,13 +67,12 @@ jobs:
 
     - name: Read Secrets
       uses: rancher-eio/read-vault-secrets@main
-      if: ${{ inputs.push == true }}
       with:
         secrets: |
           secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials username | DOCKER_USERNAME ;
           secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials password | DOCKER_PASSWORD
 
-    - name: Login to Docker Hub
+    - name: Get Branch Name
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_ENV"
     - name: Login to Docker Hub
