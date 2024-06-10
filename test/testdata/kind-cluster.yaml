@@ -3,4 +3,8 @@ kind: Cluster
 nodes:
   - role: control-plane
   - role: worker
+    labels:
+      kubernetes.io/hostname: kind-worker1.hostname
   - role: worker
+    labels:
+      kubernetes.io/hostname: kind-worker2.hostname
