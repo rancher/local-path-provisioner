@@ -8,9 +8,11 @@ image:
   tag: master-head
   pullPolicy: IfNotPresent
 
-helperImage:
-  repository: busybox
-  tag: latest
+helper:
+  image: 
+    repository: busybox
+    tag: latest
+  tolerations: []
 
 defaultSettings:
   registrySecret: ~
