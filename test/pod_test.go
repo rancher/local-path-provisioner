@@ -39,6 +39,8 @@ func (p *PodTestSuite) SetupSuite() {
 	cmds := []string{
 		fmt.Sprintf("kind create cluster --config=%s --wait=120s", testdataFile("kind-cluster.yaml")),
 		fmt.Sprintf("kind load docker-image %s", p.config.IMAGE),
+		// We'll be replacing this, but applying particular labels to it.
+		"kubectl -n local-path-storage delete deployment local-path-provisioner --wait",
 	}
 	for _, cmd := range cmds {
 		_, err = runCmd(
