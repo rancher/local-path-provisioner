@@ -42,14 +42,16 @@ storageClass:
   ## Ignored if storageClass.create is false
   name: local-path
 
+  ## parameters configures the volumes belonging to the storage class
+  parameters: {}
+    # # Set a path pattern, if unset the default will be used
+    # pathPattern: "{{ .PVC.Namespace }}-{{ .PVC.Name }}"
+
   ## ReclaimPolicy field of the class, which can be either Delete or Retain
   reclaimPolicy: Delete
 
   ## volumeBindingMode field controls when volume binding and dynamic provisioning should occur, can be  "Immediate" or "WaitForFirstConsumer"
   volumeBindingMode: WaitForFirstConsumer
-
-  ## Set a path pattern, if unset the default will be used
-  # pathPattern: "{{ .PVC.Namespace }}-{{ .PVC.Name }}"
 
 # nodePathMap is the place user can customize where to store the data on each node.
 # 1. If one node is not listed on the nodePathMap, and Kubernetes wants to create volume on it, the paths specified in
