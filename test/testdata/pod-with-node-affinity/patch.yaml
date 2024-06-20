@@ -11,4 +11,4 @@ spec:
               - key: kubernetes.io/hostname
                 operator: In
                 values:
-                  - kind-worker
+                  - kind-worker1.hostname
