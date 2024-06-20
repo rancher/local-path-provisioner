@@ -281,6 +281,10 @@ func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, 
 	return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are unconfigured")
 }
 
+func (p *LocalPathProvisioner) SupportsBlock(_ context.Context) bool {
+	return true
+}
+
 func (p *LocalPathProvisioner) pickConfig(storageClassName string) (*StorageClassConfig, error) {
 	if len(p.config.StorageClassConfigs) == 0 {
 		return &p.config.StorageClassConfig, nil
@@ -399,8 +403,6 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		return nil, pvController.ProvisioningFinished, err
 	}
 
-	fs := v1.PersistentVolumeFilesystem
-
 	var pvs v1.PersistentVolumeSource
 	var volumeType string
 	if dVal, ok := opts.StorageClass.GetAnnotations()["defaultVolumeType"]; ok {
@@ -452,7 +454,7 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: *opts.StorageClass.ReclaimPolicy,
 			AccessModes:                   pvc.Spec.AccessModes,
-			VolumeMode:                    &fs,
+			VolumeMode:                    pvc.Spec.VolumeMode,
 			Capacity: v1.ResourceList{
 				v1.ResourceStorage: pvc.Spec.Resources.Requests[v1.ResourceStorage],
 			},
