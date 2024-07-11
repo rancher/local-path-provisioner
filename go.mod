@@ -1,6 +1,6 @@
 module github.com/rancher/local-path-provisioner
 
-go 1.21
+go 1.22
 
 require (
 	github.com/Sirupsen/logrus v0.11.0
