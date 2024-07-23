@@ -1,7 +1,7 @@
-FROM golang:1.21.4-alpine AS builder
+FROM golang:1.22.5-alpine AS builder
 
 COPY main.go /main.go
-COPY go.mod /go.mod 
+COPY go.mod /go.mod
 
 RUN cd / && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-extldflags -static -s -w" -o /manager && \
     chmod 777 /manager
