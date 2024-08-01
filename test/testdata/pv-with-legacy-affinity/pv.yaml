@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  annotations:
+    local.path.provisioner/selected-node: kind-worker
+    pv.kubernetes.io/provisioned-by: rancher.io/local-path
+  finalizers:
+    - kubernetes.io/pv-protection
+  labels:
+    test/avoid-cleanup: "true"
+  name: pvc-to-clean-up
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 100Mi
+  hostPath:
+    path: /opt/local-path-provisioner/default/local-path-pvc
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - kind-worker1.hostname
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: no-such-pvc
+    namespace: default
+    # The PVC "definitely doesn't exist any more"
+    resourceVersion: "1"
+    uid: 12345678-1234-5678-9abc-123456789abc
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-path-custom-path-pattern
+  volumeMode: Filesystem
