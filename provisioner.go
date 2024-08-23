@@ -23,7 +23,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
 )
 
 type ActionType string
