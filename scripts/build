@@ -13,6 +13,7 @@ LINKFLAGS="-X main.VERSION=$VERSION"
 CGO_ENABLED=0 GOARCH=amd64 go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-amd64
 CGO_ENABLED=0 GOARCH=arm64 go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-arm64
 CGO_ENABLED=0 GOARCH=arm go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-arm
+CGO_ENABLED=0 GOARCH=riscv64 go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-riscv64
 if [ "$CROSS" = "true" ] && [ "$ARCH" = "amd64" ]; then
     GOOS=darwin go build -ldflags "$LINKFLAGS" -o bin/local-path-provisioner-darwin
     GOOS=windows go build -ldflags "$LINKFLAGS" -o bin/local-path-provisioner-windows

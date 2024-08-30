@@ -3,7 +3,7 @@
 FROM alpine
 
 ARG TARGETPLATFORM
-RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/arm64" ] && [ "$TARGETPLATFORM" != "linux/arm/v7" ]; then \
+RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/arm64" ] && [ "$TARGETPLATFORM" != "linux/arm/v7" ] && [ "$TARGETPLATFORM" != "linux/riscv64" ]; then \
     echo "Error: Unsupported TARGETPLATFORM: $TARGETPLATFORM" && \
     exit 1; \
     fi
