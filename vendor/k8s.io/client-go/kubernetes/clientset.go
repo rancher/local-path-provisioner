@@ -52,7 +52,7 @@ import (
 	eventsv1 "k8s.io/client-go/kubernetes/typed/events/v1"
 	eventsv1beta1 "k8s.io/client-go/kubernetes/typed/events/v1beta1"
 	extensionsv1beta1 "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
-	flowcontrolv1alpha1 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1alpha1"
+	flowcontrolv1 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1"
 	flowcontrolv1beta1 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta1"
 	flowcontrolv1beta2 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta2"
 	flowcontrolv1beta3 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta3"
@@ -74,6 +74,7 @@ import (
 	storagev1 "k8s.io/client-go/kubernetes/typed/storage/v1"
 	storagev1alpha1 "k8s.io/client-go/kubernetes/typed/storage/v1alpha1"
 	storagev1beta1 "k8s.io/client-go/kubernetes/typed/storage/v1beta1"
+	storagemigrationv1alpha1 "k8s.io/client-go/kubernetes/typed/storagemigration/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 )
@@ -109,7 +110,7 @@ type Interface interface {
 	EventsV1() eventsv1.EventsV1Interface
 	EventsV1beta1() eventsv1beta1.EventsV1beta1Interface
 	ExtensionsV1beta1() extensionsv1beta1.ExtensionsV1beta1Interface
-	FlowcontrolV1alpha1() flowcontrolv1alpha1.FlowcontrolV1alpha1Interface
+	FlowcontrolV1() flowcontrolv1.FlowcontrolV1Interface
 	FlowcontrolV1beta1() flowcontrolv1beta1.FlowcontrolV1beta1Interface
 	FlowcontrolV1beta2() flowcontrolv1beta2.FlowcontrolV1beta2Interface
 	FlowcontrolV1beta3() flowcontrolv1beta3.FlowcontrolV1beta3Interface
@@ -131,6 +132,7 @@ type Interface interface {
 	StorageV1beta1() storagev1beta1.StorageV1beta1Interface
 	StorageV1() storagev1.StorageV1Interface
 	StorageV1alpha1() storagev1alpha1.StorageV1alpha1Interface
+	StoragemigrationV1alpha1() storagemigrationv1alpha1.StoragemigrationV1alpha1Interface
 }
 
 // Clientset contains the clients for groups.
@@ -165,7 +167,7 @@ type Clientset struct {
 	eventsV1                      *eventsv1.EventsV1Client
 	eventsV1beta1                 *eventsv1beta1.EventsV1beta1Client
 	extensionsV1beta1             *extensionsv1beta1.ExtensionsV1beta1Client
-	flowcontrolV1alpha1           *flowcontrolv1alpha1.FlowcontrolV1alpha1Client
+	flowcontrolV1                 *flowcontrolv1.FlowcontrolV1Client
 	flowcontrolV1beta1            *flowcontrolv1beta1.FlowcontrolV1beta1Client
 	flowcontrolV1beta2            *flowcontrolv1beta2.FlowcontrolV1beta2Client
 	flowcontrolV1beta3            *flowcontrolv1beta3.FlowcontrolV1beta3Client
@@ -187,6 +189,7 @@ type Clientset struct {
 	storageV1beta1                *storagev1beta1.StorageV1beta1Client
 	storageV1                     *storagev1.StorageV1Client
 	storageV1alpha1               *storagev1alpha1.StorageV1alpha1Client
+	storagemigrationV1alpha1      *storagemigrationv1alpha1.StoragemigrationV1alpha1Client
 }
 
 // AdmissionregistrationV1 retrieves the AdmissionregistrationV1Client
@@ -334,9 +337,9 @@ func (c *Clientset) ExtensionsV1beta1() extensionsv1beta1.ExtensionsV1beta1Inter
 	return c.extensionsV1beta1
 }
 
-// FlowcontrolV1alpha1 retrieves the FlowcontrolV1alpha1Client
-func (c *Clientset) FlowcontrolV1alpha1() flowcontrolv1alpha1.FlowcontrolV1alpha1Interface {
-	return c.flowcontrolV1alpha1
+// FlowcontrolV1 retrieves the FlowcontrolV1Client
+func (c *Clientset) FlowcontrolV1() flowcontrolv1.FlowcontrolV1Interface {
+	return c.flowcontrolV1
 }
 
 // FlowcontrolV1beta1 retrieves the FlowcontrolV1beta1Client
@@ -442,6 +445,11 @@ func (c *Clientset) StorageV1() storagev1.StorageV1Interface {
 // StorageV1alpha1 retrieves the StorageV1alpha1Client
 func (c *Clientset) StorageV1alpha1() storagev1alpha1.StorageV1alpha1Interface {
 	return c.storageV1alpha1
+}
+
+// StoragemigrationV1alpha1 retrieves the StoragemigrationV1alpha1Client
+func (c *Clientset) StoragemigrationV1alpha1() storagemigrationv1alpha1.StoragemigrationV1alpha1Interface {
+	return c.storagemigrationV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -604,7 +612,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.flowcontrolV1alpha1, err = flowcontrolv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	cs.flowcontrolV1, err = flowcontrolv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -692,6 +700,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.storagemigrationV1alpha1, err = storagemigrationv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -742,7 +754,7 @@ func New(c rest.Interface) *Clientset {
 	cs.eventsV1 = eventsv1.New(c)
 	cs.eventsV1beta1 = eventsv1beta1.New(c)
 	cs.extensionsV1beta1 = extensionsv1beta1.New(c)
-	cs.flowcontrolV1alpha1 = flowcontrolv1alpha1.New(c)
+	cs.flowcontrolV1 = flowcontrolv1.New(c)
 	cs.flowcontrolV1beta1 = flowcontrolv1beta1.New(c)
 	cs.flowcontrolV1beta2 = flowcontrolv1beta2.New(c)
 	cs.flowcontrolV1beta3 = flowcontrolv1beta3.New(c)
@@ -764,6 +776,7 @@ func New(c rest.Interface) *Clientset {
 	cs.storageV1beta1 = storagev1beta1.New(c)
 	cs.storageV1 = storagev1.New(c)
 	cs.storageV1alpha1 = storagev1alpha1.New(c)
+	cs.storagemigrationV1alpha1 = storagemigrationv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
