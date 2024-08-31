@@ -1,0 +1,34 @@
+name: Scan With Trivy and Upload Results to GitHub Security Tab
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - v*
+  pull_request:
+
+jobs:
+  scan-vulnerabilities:
+    name: Scan for Vulnerabilities With Trivy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner in fs mode
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy Scan Results to GitHub Security Tab
+        if: failure()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
