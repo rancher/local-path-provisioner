@@ -97,10 +97,10 @@ podAnnotations: {}
 podSecurityContext: {}
   # runAsNonRoot: true
 
-securityContext: {}
+securityContext:
+  seccompProfile:
+    type: RuntimeDefault
   # allowPrivilegeEscalation: false
-  # seccompProfile:
-  #   type: RuntimeDefault
   # capabilities:
   #   drop: ["ALL"]
   # runAsUser: 65534
