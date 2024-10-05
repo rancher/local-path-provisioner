@@ -422,16 +422,20 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		// affinity, as path is accessible from any node
 		nodeAffinity = nil
 	} else {
+		valueNode, ok := node.GetLabels()[KeyNode]
+		if !ok {
+			valueNode = nodeName
+		}
 		nodeAffinity = &v1.VolumeNodeAffinity{
 			Required: &v1.NodeSelector{
 				NodeSelectorTerms: []v1.NodeSelectorTerm{
 					{
-						MatchFields: []v1.NodeSelectorRequirement{
+						MatchExpressions: []v1.NodeSelectorRequirement{
 							{
-								Key:      metav1.ObjectNameField,
+								Key:      KeyNode,
 								Operator: v1.NodeSelectorOpIn,
 								Values: []string{
-									node.Name,
+									valueNode,
 								},
 							},
 						},
@@ -471,7 +475,7 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
 
-	path, node, nodeLabels, err := p.getPathAndNodeForPV(pv, c)
+	path, node, err := p.getPathAndNodeForPV(pv, c)
 	if err != nil {
 		return err
 	}
@@ -494,7 +498,6 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 			Mode:        *pv.Spec.VolumeMode,
 			SizeInBytes: storage.Value(),
 			Node:        node,
-			NodeLabels:  nodeLabels,
 		}, c); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
@@ -505,7 +508,7 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 	return nil
 }
 
-func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, nodeLabels map[string]string, err error) {
+func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
@@ -516,55 +519,49 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg 
 	} else if volumeSource.Local != nil && volumeSource.HostPath == nil {
 		path = volumeSource.Local.Path
 	} else {
-		return "", "", nil, fmt.Errorf("no path set")
+		return "", "", fmt.Errorf("no path set")
 	}
 
 	sharedFS, err := p.isSharedFilesystem(cfg)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", err
 	}
 
 	if sharedFS {
 		// We don't have affinity and can use any node
-		return path, "", nil, nil
+		return path, "", nil
 	}
 
 	// Dealing with local filesystem
 
 	nodeAffinity := pv.Spec.NodeAffinity
 	if nodeAffinity == nil {
-		return "", "", nil, fmt.Errorf("no NodeAffinity set")
+		return "", "", fmt.Errorf("no NodeAffinity set")
 	}
 	required := nodeAffinity.Required
 	if required == nil {
-		return "", "", nil, fmt.Errorf("no NodeAffinity.Required set")
+		return "", "", fmt.Errorf("no NodeAffinity.Required set")
 	}
 
-	// If we have an explicit node, use that; otherwise use the selector.
-	for _, selectorTerm := range required.NodeSelectorTerms {
-		for _, expression := range selectorTerm.MatchFields {
-			if expression.Key == metav1.ObjectNameField && expression.Operator == v1.NodeSelectorOpIn {
-				if len(expression.Values) != 1 {
-					return "", "", nil, fmt.Errorf("multiple values for the node affinity")
-				}
-				return path, expression.Values[0], nil, nil
-			}
-		}
-	}
-	// The scheduler must use the PV's node selector to schedule a helper pod.
+	node = ""
 	for _, selectorTerm := range required.NodeSelectorTerms {
 		for _, expression := range selectorTerm.MatchExpressions {
 			if expression.Key == KeyNode && expression.Operator == v1.NodeSelectorOpIn {
 				if len(expression.Values) != 1 {
-					return "", "", nil, fmt.Errorf("multiple values for the node affinity")
+					return "", "", fmt.Errorf("multiple values for the node affinity")
 				}
-				return path, "", map[string]string{
-					KeyNode: expression.Values[0],
-				}, nil
+				node = expression.Values[0]
+				break
 			}
 		}
+		if node != "" {
+			break
+		}
 	}
-	return "", "", nil, fmt.Errorf("cannot find affinited node")
+	if node == "" {
+		return "", "", fmt.Errorf("cannot find affinited node")
+	}
+	return path, node, nil
 }
 
 type volumeOptions struct {
@@ -573,7 +570,6 @@ type volumeOptions struct {
 	Mode        v1.PersistentVolumeMode
 	SizeInBytes int64
 	Node        string
-	NodeLabels  map[string]string
 }
 
 func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions, cfg *StorageClassConfig) (err error) {
@@ -584,7 +580,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	if err != nil {
 		return err
 	}
-	if o.Name == "" || o.Path == "" || (!sharedFS && o.Node == "" && o.NodeLabels == nil) {
+	if o.Name == "" || o.Path == "" || (!sharedFS && o.Node == "") {
 		return fmt.Errorf("invalid empty name or path or node")
 	}
 	if !filepath.IsAbs(o.Path) {
@@ -665,8 +661,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		helperPod.Name = helperPod.Name[:HelperPodNameMaxLength]
 	}
 	helperPod.Namespace = p.namespace
-	helperPod.Spec.NodeName = o.Node
-	helperPod.Spec.NodeSelector = o.NodeLabels
+	if o.Node != "" {
+		helperPod.Spec.NodeName = o.Node
+	}
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
 	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
 	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
