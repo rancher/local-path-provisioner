@@ -78,7 +78,7 @@ func testdataFile(fields ...string) string {
 func deleteKustomizeDeployment(t *testing.T, kustomizeDir string, envs []string) error {
 	_, err := runCmd(
 		t,
-		"kustomize build | kubectl delete --timeout=180s -f - -l 'test/avoid-cleanup!=true'",
+		"kustomize build | kubectl delete --timeout=180s -f -",
 		testdataFile(kustomizeDir),
 		envs,
 		nil,
