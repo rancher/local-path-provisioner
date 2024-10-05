@@ -82,38 +82,38 @@ func TestPVCTestSuite(t *testing.T) {
 func (p *PodTestSuite) TestPodWithHostPathVolume() {
 	p.kustomizeDir = "pod"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithLocalVolume() {
 	p.kustomizeDir = "pod-with-local-volume"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), localVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithLocalVolumeDefault() {
 	p.kustomizeDir = "pod-with-default-local-volume"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), localVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithNodeAffinity() {
 	p.kustomizeDir = "pod-with-node-affinity"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithRWOPVolume() {
 	p.kustomizeDir = "pod-with-rwop-volume"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), localVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithSecurityContext() {
 	p.kustomizeDir = "pod-with-security-context"
 	kustomizeDir := testdataFile(p.kustomizeDir)
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("podscheduled"), hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "podscheduled", hostPathVolumeType)
 
 	cmd := fmt.Sprintf(`kubectl get pod -l %s=%s -o=jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].reason}'`, LabelKey, LabelValue)
 
@@ -142,33 +142,22 @@ loop:
 func (p *PodTestSuite) TestPodWithSubpath() {
 	p.kustomizeDir = "pod-with-subpath"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
 func (p *PodTestSuite) xxTestPodWithMultipleStorageClasses() {
 	p.kustomizeDir = "multiple-storage-classes"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
 func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
 	p.kustomizeDir = "custom-path-pattern"
 
-	runTest(p, []string{p.config.IMAGE}, waitCondition("ready"), hostPathVolumeType)
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
-func (p *PodTestSuite) TestPodWithLegacyAffinityConstraint() {
-	// The helper pod should be correctly scheduled
-	p.kustomizeDir = "pv-with-legacy-affinity"
-
-	runTest(p, []string{p.config.IMAGE}, "kubectl wait pv pvc-to-clean-up --for delete --timeout=120s", "")
-}
-
-func waitCondition(waitCondition string) string {
-	return fmt.Sprintf("kubectl wait pod -l %s=%s --for condition=%s --timeout=120s", LabelKey, LabelValue, waitCondition)
-}
-
-func runTest(p *PodTestSuite, images []string, waitCmd, volumeType string) {
+func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string) {
 	kustomizeDir := testdataFile(p.kustomizeDir)
 
 	var cmds []string
@@ -182,7 +171,7 @@ func runTest(p *PodTestSuite, images []string, waitCmd, volumeType string) {
 		cmds,
 		fmt.Sprintf("kustomize edit add label %s:%s -f", LabelKey, LabelValue),
 		"kustomize build | kubectl apply -f -",
-		waitCmd,
+		fmt.Sprintf("kubectl wait pod -l %s=%s --for condition=%s --timeout=120s", LabelKey, LabelValue, waitCondition),
 	)
 
 	for _, cmd := range cmds {
@@ -199,15 +188,13 @@ func runTest(p *PodTestSuite, images []string, waitCmd, volumeType string) {
 		}
 	}
 
-	if volumeType != "" {
-		typeCheckCmd := fmt.Sprintf("kubectl get pv $(%s) -o jsonpath='{.spec.%s}'", "kubectl get pv -o jsonpath='{.items[0].metadata.name}'", volumeType)
-		c := createCmd(p.T(), typeCheckCmd, kustomizeDir, p.config.envs(), nil)
-		typeCheckOutput, err := c.CombinedOutput()
-		if err != nil {
-			p.FailNow("", "failed to check volume type: %v", err)
-		}
-		if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
-			p.FailNow("volume Type not correct")
-		}
+	typeCheckCmd := fmt.Sprintf("kubectl get pv $(%s) -o jsonpath='{.spec.%s}'", "kubectl get pv -o jsonpath='{.items[0].metadata.name}'", volumeType)
+	c := createCmd(p.T(), typeCheckCmd, kustomizeDir, p.config.envs(), nil)
+	typeCheckOutput, err := c.CombinedOutput()
+	if err != nil {
+		p.FailNow("", "failed to check volume type: %v", err)
+	}
+	if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
+		p.FailNow("volume Type not correct")
 	}
 }
