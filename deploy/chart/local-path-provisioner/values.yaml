@@ -5,7 +5,7 @@ commonLabels: {}
 
 image:
   repository: rancher/local-path-provisioner
-  tag: v0.0.29
+  tag: v0.0.30
   pullPolicy: IfNotPresent
 
 helperImage:
