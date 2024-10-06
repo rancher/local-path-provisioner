@@ -57,7 +57,7 @@ default values.
 | ----------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `commonLabels`                      | Custom labels to apply to all resources                                         | `{}`                                                                                |
 | `image.repository`                  | Local Path Provisioner image name                                               | `rancher/local-path-provisioner`                                                    |
-| `image.tag`                         | Local Path Provisioner image tag                                                | `v0.0.29` .                                                                         |
+| `image.tag`                         | Local Path Provisioner image tag                                                | `v0.0.30` .                                                                         |
 | `image.pullPolicy`                  | Image pull policy                                                               | `IfNotPresent`                                                                      |
 | `storageClass.create`               | If true, create a `StorageClass`                                                | `true`                                                                              |
 | `storageClass.provisionerName`      | The provisioner name for the storage class                                      | `nil`                                                                               |
