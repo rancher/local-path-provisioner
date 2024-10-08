@@ -76,14 +76,28 @@ func testdataFile(fields ...string) string {
 }
 
 func deleteKustomizeDeployment(t *testing.T, kustomizeDir string, envs []string) error {
-	_, err := runCmd(
-		t,
-		"kustomize build | kubectl delete --timeout=180s -f -",
-		testdataFile(kustomizeDir),
-		envs,
-		nil,
-	)
-	return err
+	cmds := []string{
+		// Begin by deleting everything except the provisioner.
+		// This gives the local-path provider a chance to kick in and kill the pv.
+		"kustomize build | kubectl delete --timeout=180s -f - -l 'system-component!=true'",
+		// Wait on the provisioner
+		"kubectl wait --for=delete pv --all",
+		// Clean up everything else
+		"kustomize build | kubectl delete --timeout=180s -f -  -l 'system-component=true' --wait",
+	}
+	for _, cmd := range cmds {
+		_, err := runCmd(
+			t,
+			cmd,
+			testdataFile(kustomizeDir),
+			envs,
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func deleteCluster(t *testing.T, envs []string) error {
