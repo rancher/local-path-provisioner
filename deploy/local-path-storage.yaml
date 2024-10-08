@@ -106,6 +106,9 @@ spec:
                   fieldPath: metadata.namespace
             - name: CONFIG_MOUNT_PATH
               value: /etc/config/
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefau
       volumes:
         - name: config-volume
           configMap:
