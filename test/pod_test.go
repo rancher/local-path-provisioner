@@ -16,6 +16,8 @@ import (
 const (
 	hostPathVolumeType = "hostPath"
 	localVolumeType    = "local"
+    normalDataPath     = "/data"
+    subPathDataPath    = "/nginx"
 )
 
 type PodTestSuite struct {
@@ -83,30 +85,35 @@ func (p *PodTestSuite) TestPodWithHostPathVolume() {
 	p.kustomizeDir = "pod"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runPersistenceTest(p, []string{p.config.IMAGE}, normalDataPath)
 }
 
 func (p *PodTestSuite) TestPodWithLocalVolume() {
 	p.kustomizeDir = "pod-with-local-volume"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+	runPersistenceTest(p, []string{p.config.IMAGE}, normalDataPath)
 }
 
 func (p *PodTestSuite) TestPodWithLocalVolumeDefault() {
 	p.kustomizeDir = "pod-with-default-local-volume"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+	runPersistenceTest(p, []string{p.config.IMAGE}, normalDataPath)
 }
 
 func (p *PodTestSuite) TestPodWithNodeAffinity() {
 	p.kustomizeDir = "pod-with-node-affinity"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runPersistenceTest(p, []string{p.config.IMAGE}, normalDataPath)
 }
 
 func (p *PodTestSuite) TestPodWithRWOPVolume() {
 	p.kustomizeDir = "pod-with-rwop-volume"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", localVolumeType)
+	runPersistenceTest(p, []string{p.config.IMAGE}, normalDataPath)
 }
 
 func (p *PodTestSuite) TestPodWithSecurityContext() {
@@ -137,12 +144,15 @@ loop:
 			break
 		}
 	}
+
+	runPersistenceTest(p, []string{p.config.IMAGE}, normalDataPath)
 }
 
 func (p *PodTestSuite) TestPodWithSubpath() {
 	p.kustomizeDir = "pod-with-subpath"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runPersistenceTest(p, []string{p.config.IMAGE}, subPathDataPath)
 }
 
 func (p *PodTestSuite) xxTestPodWithMultipleStorageClasses() {
@@ -155,6 +165,7 @@ func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
 	p.kustomizeDir = "custom-path-pattern"
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+	runPersistenceTest(p, []string{p.config.IMAGE}, normalDataPath)
 }
 
 func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string) {
@@ -196,5 +207,51 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 	}
 	if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
 		p.FailNow("volume Type not correct")
+	}
+}
+
+
+func runPersistenceTest(p *PodTestSuite, images []string, dataPath string) {
+	kustomizeDir := testdataFile(p.kustomizeDir)
+
+	var cmds []string
+	for _, image := range images {
+		if len(image) > 0 {
+			cmds = append(cmds, fmt.Sprintf("kustomize edit set image %s", image))
+		}
+	}
+
+	cmds = append(
+		cmds,
+	    fmt.Sprintf("kubectl exec volume-test -- sh -c 'echo foo > %s/bar'", dataPath),
+	    "kubectl delete pod/volume-test",
+	    "kubectl wait --for=delete pod/volume-test --timeout=120s",
+		"kustomize build | kubectl apply -f -",
+		"kubectl wait pod volume-test --for condition=ready --timeout=120s",
+	)
+
+	for _, cmd := range cmds {
+		_, err := runCmd(
+			p.T(),
+			cmd,
+			kustomizeDir,
+			p.config.envs(),
+			nil,
+		)
+		if err != nil {
+			p.FailNow("", "failed to run command", cmd, err)
+			break
+		}
+	}
+
+	catDataCmd := fmt.Sprintf("kubectl exec volume-test -- cat %s/bar", dataPath)
+	c := createCmd(p.T(), catDataCmd, kustomizeDir, p.config.envs(), nil)
+	catDataOutput, err := c.CombinedOutput()
+	if err != nil {
+        p.FailNow("", "failed to cat 'bar' from %s: %v", dataPath, err)
+	}
+
+	if len(catDataOutput) == 0 || !strings.Contains(string(catDataOutput), "foo") {
+		p.FailNow("data was not persisted as expected")
 	}
 }
