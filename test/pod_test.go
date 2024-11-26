@@ -16,8 +16,8 @@ import (
 const (
 	hostPathVolumeType = "hostPath"
 	localVolumeType    = "local"
-    normalDataPath     = "/data"
-    subPathDataPath    = "/nginx"
+	normalDataPath     = "/data"
+	subPathDataPath    = "/nginx"
 )
 
 type PodTestSuite struct {
@@ -210,7 +210,6 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 	}
 }
 
-
 func runPersistenceTest(p *PodTestSuite, images []string, dataPath string) {
 	kustomizeDir := testdataFile(p.kustomizeDir)
 
@@ -223,9 +222,9 @@ func runPersistenceTest(p *PodTestSuite, images []string, dataPath string) {
 
 	cmds = append(
 		cmds,
-	    fmt.Sprintf("kubectl exec volume-test -- sh -c 'echo foo > %s/bar'", dataPath),
-	    "kubectl delete pod/volume-test",
-	    "kubectl wait --for=delete pod/volume-test --timeout=120s",
+		fmt.Sprintf("kubectl exec volume-test -- sh -c 'echo foo > %s/bar'", dataPath),
+		"kubectl delete pod/volume-test",
+		"kubectl wait --for=delete pod/volume-test --timeout=120s",
 		"kustomize build | kubectl apply -f -",
 		"kubectl wait pod volume-test --for condition=ready --timeout=120s",
 	)
@@ -248,7 +247,7 @@ func runPersistenceTest(p *PodTestSuite, images []string, dataPath string) {
 	c := createCmd(p.T(), catDataCmd, kustomizeDir, p.config.envs(), nil)
 	catDataOutput, err := c.CombinedOutput()
 	if err != nil {
-        p.FailNow("", "failed to cat 'bar' from %s: %v", dataPath, err)
+		p.FailNow("", "failed to cat 'bar' from %s: %v", dataPath, err)
 	}
 
 	if len(catDataOutput) == 0 || !strings.Contains(string(catDataOutput), "foo") {
