@@ -30,7 +30,7 @@ To install the chart with the release name `local-path-storage`:
 ```console
 $ git clone https://github.com/rancher/local-path-provisioner.git
 $ cd local-path-provisioner
-$ helm install ./deploy/chart/local-path-provisioner --name local-path-storage --namespace local-path-storage
+$ helm install local-path-storage --create-namespace --namespace local-path-storage ./deploy/chart/local-path-provisioner/
 ```
 
 The command deploys Local Path Provisioner on the Kubernetes cluster in the default configuration. The
