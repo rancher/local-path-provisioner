@@ -3,8 +3,10 @@ kind: Kustomization
 resources:
 - ../../../deploy
 - ../../../examples/pod-with-local-volume
-commonLabels:
-  app: local-path-provisioner
 images:
 - name: rancher/local-path-provisioner
   newTag: dev
+labels:
+- includeSelectors: true
+  pairs:
+    app: local-path-provisioner
