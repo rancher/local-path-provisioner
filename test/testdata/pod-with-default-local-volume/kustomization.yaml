@@ -5,8 +5,10 @@ resources:
 - ../../../examples/pod
 patches:
 - path: patch.yaml
-commonLabels:
-  app: local-path-provisioner
 images:
 - name: rancher/local-path-provisioner
   newTag: dev
+labels:
+- includeSelectors: true
+  pairs:
+    app: local-path-provisioner
