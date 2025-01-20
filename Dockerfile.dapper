@@ -1,14 +1,11 @@
-FROM golang:1.23.4-alpine
+FROM golang:1.23.5-alpine
 
 ARG DAPPER_HOST_ARCH
 ENV ARCH $DAPPER_HOST_ARCH
 
 RUN apk -U add bash git gcc musl-dev docker vim less file curl wget ca-certificates jq
 RUN rm -rf /go/src /go/pkg
-RUN if [ "${ARCH}" == "amd64" ]; then \
-    curl -sL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.41.1; \
-    fi; \
-    if [ "${ARCH}" == "amd64" ] || [ "${ARCH}" == "arm64" ]; then \
+RUN if [ "${ARCH}" == "amd64" ] || [ "${ARCH}" == "arm64" ]; then \
     kind_version=$(curl -sL https://api.github.com/repos/kubernetes-sigs/kind/releases/latest | jq -r ".tag_name") && curl -sL "https://kind.sigs.k8s.io/dl/${kind_version}/kind-linux-${ARCH}" -o kind && install kind /usr/local/bin; \
     kubectl_version=$(curl -sL https://dl.k8s.io/release/stable.txt) && curl -sLO "https://dl.k8s.io/release/${kubectl_version}/bin/linux/${ARCH}/kubectl" && install kubectl /usr/local/bin; \
     curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_${ARCH}.tar.gz" | tar -zxv -C /usr/local/bin; \
