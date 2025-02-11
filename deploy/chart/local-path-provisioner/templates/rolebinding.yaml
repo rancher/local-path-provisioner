@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ include "local-path-provisioner.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "local-path-provisioner.namespace" . }}
   labels:
 {{ include "local-path-provisioner.labels" . | indent 4 }}
 roleRef:
@@ -13,5 +13,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ template "local-path-provisioner.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ include "local-path-provisioner.namespace" . }}
 {{- end -}}

@@ -2,6 +2,7 @@
 
 replicaCount: 1
 commonLabels: {}
+namespace: local-path-provisioner
 
 image:
   repository: rancher/local-path-provisioner
@@ -162,7 +163,6 @@ configmap:
     namespaceOverride: ""
     name: "helper-pod"
     annotations: {}
-
 # Number of provisioner worker threads to call provision/delete simultaneously.
 # workerThreads: 4
 

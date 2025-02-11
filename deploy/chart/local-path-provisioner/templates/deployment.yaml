@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "local-path-provisioner.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "local-path-provisioner.namespace" . }}
   labels:
 {{ include "local-path-provisioner.labels" . | indent 4 }}
 spec:
@@ -72,7 +72,7 @@ spec:
               mountPath: /etc/config/
           env:
             - name: POD_NAMESPACE
-              value: {{ .Release.Namespace }}
+              value: {{ include "local-path-provisioner.namespace" . }}
             - name: CONFIG_MOUNT_PATH
               value: /etc/config/
           resources:
