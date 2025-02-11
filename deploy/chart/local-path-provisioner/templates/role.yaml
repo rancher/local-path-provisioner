@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ include "local-path-provisioner.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "local-path-provisioner.namespace" . }}
   labels:
 {{ include "local-path-provisioner.labels" . | indent 4 }}
 rules:
