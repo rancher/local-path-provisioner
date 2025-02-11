@@ -297,13 +297,13 @@ type pvMetadata struct {
 	PVC    metav1.ObjectMeta
 }
 
-func pathFromPattern(pattern string, opts pvController.ProvisionOptions) (string, error) {
+func parseFromPattern(patternName string, pattern string, opts pvController.ProvisionOptions) (string, error) {
 	metadata := pvMetadata{
 		PVName: opts.PVName,
 		PVC:    opts.PVC.ObjectMeta,
 	}
 
-	tpl, err := template.New("pathPattern").Parse(pattern)
+	tpl, err := template.New(patternName).Parse(pattern)
 	if err != nil {
 		return "", err
 	}
@@ -366,9 +366,20 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 	name := opts.PVName
 	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
 
-	pathPattern, exists := opts.StorageClass.Parameters["pathPattern"]
+	volumeNamePatternKey := "volumeNamePattern"
+	volumeNamePattern, exists := opts.StorageClass.Parameters[volumeNamePatternKey]
 	if exists {
-		folderName, err = pathFromPattern(pathPattern, opts)
+		name, err = parseFromPattern(volumeNamePatternKey, volumeNamePattern, opts)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create volume name from pattern %v", volumeNamePattern)
+			return nil, pvController.ProvisioningFinished, err
+		}
+	}
+
+	pathPatternKey := "pathPattern"
+	pathPattern, exists := opts.StorageClass.Parameters[pathPatternKey]
+	if exists {
+		folderName, err = parseFromPattern(pathPatternKey, pathPattern, opts)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to create path from pattern %v", pathPattern)
 			return nil, pvController.ProvisioningFinished, err
