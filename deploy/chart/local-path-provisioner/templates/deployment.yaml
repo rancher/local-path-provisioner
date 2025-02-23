@@ -72,7 +72,9 @@ spec:
               mountPath: /etc/config/
           env:
             - name: POD_NAMESPACE
-              value: {{ include "local-path-provisioner.namespace" . }}
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: CONFIG_MOUNT_PATH
               value: /etc/config/
           resources:
