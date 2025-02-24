@@ -2,7 +2,7 @@
 
 replicaCount: 1
 commonLabels: {}
-namespace: local-path-provisioner
+namespaceOverride: ""
 
 image:
   repository: rancher/local-path-provisioner
