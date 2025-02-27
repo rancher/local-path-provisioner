@@ -483,6 +483,11 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 		if node == "" {
 			logrus.Infof("Deleting volume %v at %v", pv.Name, path)
 		} else {
+			// Check if node still exists
+			if _, err := p.kubeClient.CoreV1().Nodes().Get(context.TODO(), node, metav1.GetOptions{}); err != nil {
+				logrus.Infof("Node %v does not exist, skipping cleanup of volume %v", node, pv.Name)
+				return nil
+			}
 			logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
 		}
 		storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
