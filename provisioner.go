@@ -602,7 +602,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	}
 	lpvTolerations := []v1.Toleration{
 		{
+			Key:      v1.TaintNodeDiskPressure,
 			Operator: v1.TolerationOpExists,
+			Effect:   v1.TaintEffectNoSchedule,
 		},
 	}
 	helperPod := p.helperPod.DeepCopy()
