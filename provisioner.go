@@ -669,7 +669,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	}
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
 	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
-	helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
+	if helperPod.Spec.Tolerations == nil {
+		helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
+	}
 	helperPod.Spec.Volumes = append(helperPod.Spec.Volumes, lpvVolumes...)
 	helperPod.Spec.Containers[0].Command = cmd
 	helperPod.Spec.Containers[0].Env = append(helperPod.Spec.Containers[0].Env, env...)
