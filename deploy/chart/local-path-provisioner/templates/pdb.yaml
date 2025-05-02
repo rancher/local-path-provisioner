@@ -1,0 +1,15 @@
+{{- if .Values.podDisruptionBudget.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "local-path-provisioner.fullname" . }}
+  namespace: {{ include "local-path-provisioner.namespace" . }}
+  labels:
+{{ include "local-path-provisioner.labels" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- toYaml (omit .Values.podDisruptionBudget "enabled") | indent 2 }}
+{{- end -}}

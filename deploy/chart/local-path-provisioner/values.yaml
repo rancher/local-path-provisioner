@@ -146,6 +146,9 @@ tolerations: []
 
 affinity: {}
 
+podDisruptionBudget:
+  enabled: false
+
 configmap:
   # specify the config map name
   name: local-path-config
