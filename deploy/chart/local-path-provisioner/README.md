@@ -9,9 +9,9 @@ solution than the built-in `local` volume feature in Kubernetes.
 ## TL;DR;
 
 ```console
-$ git clone https://github.com/rancher/local-path-provisioner.git
-$ cd local-path-provisioner
-$ helm install --name local-path-storage --namespace local-path-storage ./deploy/chart/local-path-provisioner
+$ helm repo add local-path-provisioner https://rancher.github.io/local-path-provisioner
+$ helm repo update
+$ helm install local-path-provisioner/local-path-provisioner
 ```
 
 ## Introduction
@@ -25,25 +25,36 @@ This chart bootstraps a [Local Path Provisioner](https://github.com/rancher/loca
 
 ## Installing the Chart
 
-To install the chart with the release name `local-path-storage`:
+To install the chart with the release name `local-path-provisioner`:
 
 ```console
-$ git clone https://github.com/rancher/local-path-provisioner.git
-$ cd local-path-provisioner
-$ helm install local-path-storage --create-namespace --namespace local-path-storage ./deploy/chart/local-path-provisioner/
+$ helm repo add local-path-provisioner https://rancher.github.io/local-path-provisioner
+$ helm repo update
+$ helm search repo local-path-provisioner
+$ helm install local-path-provisioner/local-path-provisioner
 ```
 
 The command deploys Local Path Provisioner on the Kubernetes cluster in the default configuration. The
 [configuration](#configuration) section lists the parameters that can be configured during installation.
 
+### Installing a local version
+```console
+$ git clone https://github.com/rancher/local-path-provisioner.git
+$ cd local-path-provisioner
+$ helm install --name local-path-provisioner --namespace local-path-provisioner ./deploy/chart/local-path-provisioner
+```
+
 > **Tip**: List all releases using `helm list`
 
 ## Uninstalling the Chart
 
-To uninstall/delete the `local-path-storage` deployment:
+To uninstall/delete the `local-path-provisioner` deployment:
 
 ```console
-$ helm uninstall local-path-storage
+$ helm list
+NAME            	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART                       	APP VERSION
+local-path-storage	default  	1       	2021-02-06 16:09:56.283059 +0100 CET	deployed	local-path-provisioner-0.0.3	0.0.3
+$ helm uninstall local-path-provisioner
 ```
 
 The command removes all the Kubernetes components associated with the chart and deletes the release.
@@ -83,14 +94,14 @@ default values.
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
 ```console
-$ helm install ./deploy/chart/local-path-provisioner --name local-path-storage --namespace local-path-storage --set storageClass.provisionerName=rancher.io/local-path
+$ helm install local-path-provisioner/local-path-provisioner --name local-path-storage --namespace local-path-storage --set storageClass.provisionerName=rancher.io/local-path
 ```
 
 Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the
 chart. For example,
 
 ```console
-$ helm install --name local-path-storage --namespace local-path-storage ./deploy/chart/local-path-provisioner -f values.yaml
+$ helm install local-path-provisioner/local-path-provisioner --namespace local-path-storage -f values.yaml
 ```
 
 > **Tip**: You can use the default [values.yaml](values.yaml)
@@ -115,5 +126,5 @@ If the output contains "beta", you may install the chart with RBAC enabled (see 
 To enable the creation of RBAC resources (On clusters with RBAC). Do the following:
 
 ```console
-$ helm install ./deploy/chart/local-path-provisioner --name local-path-storage --namespace local-path-storage --set rbac.create=true
+$ helm install local-path-provisioner/local-path-provisioner --name local-path-storage --namespace local-path-storage --set rbac.create=true
 ```
