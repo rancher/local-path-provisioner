@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -251,11 +252,14 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, 
 		return requestedPath, nil
 	}
 	// if no particular path was requested, choose a random one
-	path := ""
-	for path = range paths {
-		break
+	i := rand.IntN(len(paths))
+	for p := range paths {
+		if i == 0 {
+			return p, nil
+		}
+		i--
 	}
-	return path, nil
+	return "", fmt.Errorf("never happens, but compiler doesn't know that")
 }
 
 func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, error) {
