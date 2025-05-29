@@ -259,7 +259,7 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, 
 		}
 		i--
 	}
-	return "", fmt.Errorf("never happens, but compiler doesn't know that")
+	return "", fmt.Errorf("failed to select a random path: no path selected from %d candidates", len(paths))
 }
 
 func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, error) {
