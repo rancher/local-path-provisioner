@@ -1,0 +1,31 @@
+name: build
+on:
+  push:
+    branches:
+    - master
+    - v*
+    tags:
+    - v*
+  pull_request:
+env:
+  HELM_REGISTRY: ghcr.io
+  CHART_DIR: deploy/chart/local-path-provisioner
+jobs:  
+  build_push_helm_chart:
+    name: Build and Push Chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.HELM_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish OCI helm chart
+        run: |
+          helm package ./${{ env.CHART_DIR }} --destination ./chart
+          helm push ./chart/*.tgz oci://${{ env.HELM_REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}/charts
