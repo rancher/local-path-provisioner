@@ -22,7 +22,6 @@ import (
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
 )
@@ -689,7 +688,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 
 	defer func() {
 		// log helper pod logs to the controller
-		if err := saveHelperPodLogs(pod); err != nil {
+		if err := p.saveHelperPodLogs(pod); err != nil {
 			logrus.Error(err.Error())
 		}
 		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(context.TODO(), helperPod.Name, metav1.DeleteOptions{})
@@ -859,7 +858,7 @@ func createPersistentVolumeSource(volumeType string, path string) (pvs v1.Persis
 // saveHelperPodLogs takes what is in stdout/stderr from the helper
 // pod and logs it to the provisioner's logs. Returns an error if we
 // can't retrieve the helper pod logs.
-func saveHelperPodLogs(pod *v1.Pod) (err error) {
+func (p *LocalPathProvisioner) saveHelperPodLogs(pod *v1.Pod) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to save %s logs", pod.Name)
 	}()
@@ -868,16 +867,7 @@ func saveHelperPodLogs(pod *v1.Pod) (err error) {
 	podLogOpts := v1.PodLogOptions{
 		Container: "helper-pod",
 	}
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return fmt.Errorf("unable to retrieve in cluster config: %s", err.Error())
-	}
-	// creates the clientset
-	clientset, err := clientset.NewForConfig(config)
-	if err != nil {
-		return fmt.Errorf("unable to get access to k8s: %s", err.Error())
-	}
-	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
+	req := p.kubeClient.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
 	podLogs, err := req.Stream(context.TODO())
 	if err != nil {
 		return fmt.Errorf("error in opening stream: %s", err.Error())
