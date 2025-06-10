@@ -664,7 +664,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		helperPod.Name = helperPod.Name[:HelperPodNameMaxLength]
 	}
 	helperPod.Namespace = p.namespace
-	if o.Node != "" {
+	if helperPod.Spec.NodeName == "" && o.Node != "" {
 		helperPod.Spec.NodeName = o.Node
 	}
 	helperPod.Spec.ServiceAccountName = p.serviceAccountName
