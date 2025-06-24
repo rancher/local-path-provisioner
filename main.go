@@ -49,6 +49,8 @@ var (
 	FlagDeletionRetryCount        = "deletion-retry-count"
 	DefaultDeletionRetryCount     = pvController.DefaultFailedDeleteThreshold
 	EnvConfigMountPath            = "CONFIG_MOUNT_PATH"
+	FlagKubeClientBurst           = "kube-client-burst"
+	FlagKubeClientQPS             = "kube-client-qps"
 )
 
 func cmdNotFound(_ *cli.Context, command string) {
@@ -132,6 +134,16 @@ func StartCmd() cli.Command {
 				Usage: "Number of retries of failed volume deletion. 0 means retry indefinitely.",
 				Value: DefaultDeletionRetryCount,
 			},
+			cli.IntFlag{
+				Name:  FlagKubeClientBurst,
+				Usage: "Burst value for kubernetes client.",
+				Value: rest.DefaultBurst,
+			},
+			cli.Float64Flag{
+				Name:  FlagKubeClientQPS,
+				Usage: "QPS value for kubernetes client.",
+				Value: float64(rest.DefaultQPS),
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := startDaemon(c); err != nil {
@@ -191,6 +203,8 @@ func startDaemon(c *cli.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get client config")
 	}
+	config.Burst = c.Int(FlagKubeClientBurst)
+	config.QPS = float32(c.Float64(FlagKubeClientQPS))
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {

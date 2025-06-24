@@ -92,13 +92,15 @@ nodePathMap:
 #     ## OR
 #     # See above
 #     nodePathMap: {}
-    
+
 podAnnotations: {}
 
-podSecurityContext: {}
+podSecurityContext:
+  {}
   # runAsNonRoot: true
 
-securityContext: {}
+securityContext:
+  {}
   # allowPrivilegeEscalation: false
   # seccompProfile:
   #   type: RuntimeDefault
@@ -108,7 +110,8 @@ securityContext: {}
   # runAsGroup: 65534
   # readOnlyRootFilesystem: true
 
-resources: {}
+resources:
+  {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little
   # resources, such as Minikube. If you do want to specify resources, uncomment the following
@@ -121,7 +124,8 @@ resources: {}
   #   memory: 128Mi
 
 helperPod:
-  resources: {}
+  resources:
+    {}
     # limits:
     #   cpu: 100m
     #   memory: 128Mi
@@ -174,3 +178,6 @@ configmap:
 
 # Number of retries of failed volume deletion. 0 means retry indefinitely.
 # deletionRetryCount: 15
+
+# Extra arguments to pass to the CLI
+extraArgs: []
