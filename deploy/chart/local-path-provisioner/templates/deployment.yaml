@@ -67,6 +67,9 @@ spec:
             - --deletion-retry-count
             - {{ .Values.deletionRetryCount | quote }}
           {{- end }}
+          {{- range .Values.extraArgs }}
+            - {{ . }}
+          {{- end }}
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config/
