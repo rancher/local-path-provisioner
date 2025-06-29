@@ -11,7 +11,7 @@ RUN if [ "${ARCH}" == "amd64" ] || [ "${ARCH}" == "arm64" ]; then \
     curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_${ARCH}.tar.gz" | tar -zxv -C /usr/local/bin; \
     fi
 
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.63.4
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
 
 # The docker version in dapper is too old to have buildx. Install it manually.
 RUN wget https://github.com/docker/buildx/releases/download/v0.19.3/buildx-v0.19.3.linux-${ARCH} && \

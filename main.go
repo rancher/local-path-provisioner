@@ -54,7 +54,7 @@ var (
 )
 
 func cmdNotFound(_ *cli.Context, command string) {
-	panic(fmt.Errorf("Unrecognized command: %s", command))
+	panic(fmt.Errorf("unrecognized command: %s", command))
 }
 
 func onUsageError(_ *cli.Context, err error, _ bool) error {
