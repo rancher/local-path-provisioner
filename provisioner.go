@@ -16,14 +16,14 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
 )
 
 type ActionType string
