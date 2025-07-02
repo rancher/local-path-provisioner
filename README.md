@@ -200,7 +200,7 @@ In this case all access modes are supported: `ReadWriteOnce`, `ReadOnlyMany` and
 
 In addition `volumeBindingMode: Immediate` can be used in  StorageClass definition.
 
-Please note that `nodePathMap`, `sharedFileSystemPath`, and `storageClassConfigs` are mutually exclusive. If `sharedFileSystemPath` or `stroageClassConfigs` are used, then `nodePathMap` must be set to `[]`.
+Please note that `nodePathMap`, `sharedFileSystemPath`, and `storageClassConfigs` are mutually exclusive. If `sharedFileSystemPath` or `storageClassConfigs` are used, then `nodePathMap` must be set to `[]`.
 
 The `setupCommand` and `teardownCommand` allow you to specify the path to binary files in helperPod that will be called when creating or deleting pvc respectively. This can be useful if you need to use distroless images for security reasons. See the examples/distroless directory for an example. A binary file can take the following parameters:
 | Parameter | Description |
