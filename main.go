@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
 )
 
 var (
@@ -54,7 +54,7 @@ var (
 )
 
 func cmdNotFound(_ *cli.Context, command string) {
-	panic(fmt.Errorf("Unrecognized command: %s", command))
+	panic(fmt.Errorf("unrecognized command: %s", command))
 }
 
 func onUsageError(_ *cli.Context, err error, _ bool) error {
@@ -276,7 +276,7 @@ func startDaemon(c *cli.Context) error {
 		return err
 	}
 	pc := pvController.NewProvisionController(
-		klog.FromContext(ctx),
+		ctx,
 		kubeClient,
 		provisionerName,
 		provisioner,

@@ -16,14 +16,14 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
 )
 
 type ActionType string
@@ -757,7 +757,9 @@ func loadConfigFile(configFile string) (cfgData *ConfigData, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	var data ConfigData
 	if err := json.NewDecoder(f).Decode(&data); err != nil {
@@ -878,7 +880,7 @@ func (p *LocalPathProvisioner) saveHelperPodLogs(pod *v1.Pod) (err error) {
 	if err != nil {
 		return fmt.Errorf("error in copying information from podLogs to buf: %s", err.Error())
 	}
-	podLogs.Close()
+	_ = podLogs.Close()
 
 	// log all messages from the helper pod to the controller
 	logrus.Infof("Start of %s logs", pod.Name)

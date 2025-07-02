@@ -4,7 +4,12 @@
 package test
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -197,4 +202,76 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 	if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
 		p.FailNow("volume Type not correct")
 	}
+}
+
+func testdataFile(fields ...string) string {
+	return filepath.Join("testdata", filepath.Join(fields...))
+}
+
+func deleteKustomizeDeployment(t *testing.T, kustomizeDir string, envs []string) error {
+	_, err := runCmd(
+		t,
+		"kustomize build | kubectl delete --timeout=180s -f -",
+		testdataFile(kustomizeDir),
+		envs,
+		nil,
+	)
+	return err
+}
+
+func deleteCluster(t *testing.T, envs []string) error {
+	_, err := runCmd(
+		t,
+		"kind delete cluster",
+		"",
+		envs,
+		nil,
+	)
+	return err
+}
+
+func createCmd(t *testing.T, cmd, kustomizeDir string, envs []string, callback func(*exec.Cmd)) *exec.Cmd {
+	t.Logf("creating command: %s", cmd)
+	c := exec.Command("bash", "-c", cmd)
+	c.Env = append(os.Environ(), envs...)
+	c.Dir = kustomizeDir
+
+	if callback != nil {
+		callback(c)
+	}
+
+	return c
+}
+
+func runCmd(t *testing.T, cmd, kustomizeDir string, envs []string, callback func(*exec.Cmd)) (*exec.Cmd, error) {
+	t.Logf("running command: %s", cmd)
+
+	c := createCmd(t, cmd, kustomizeDir, envs, callback)
+	stdout, _ := c.StdoutPipe()
+	stderr, _ := c.StderrPipe()
+
+	err := c.Start()
+	if err != nil {
+		return nil, err
+	}
+
+	stopCh := make(chan struct{})
+	go func() {
+		mergedReader := io.MultiReader(stderr, stdout)
+		scanner := bufio.NewScanner(mergedReader)
+		scanner.Split(bufio.ScanLines)
+		for scanner.Scan() {
+			t.Log(scanner.Text())
+		}
+
+		close(stopCh)
+	}()
+
+	<-stopCh
+	err = c.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
