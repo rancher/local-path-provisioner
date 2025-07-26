@@ -91,7 +91,7 @@ nodePathMap:
 #     sharedFileSystemPath: ""
 #     ## OR
 #     # See above
-#     nodePathMap: {}
+#     nodePathMap: []
     
 podAnnotations: {}
 
