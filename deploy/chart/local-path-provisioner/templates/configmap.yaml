@@ -49,6 +49,9 @@ data:
         - key: node.kubernetes.io/disk-pressure
           operator: Exists
           effect: NoSchedule
+        {{- with .Values.configmap.helperPod.tolerations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       containers:
         - name: helper-pod
           {{- if .Values.privateRegistry.registryUrl }}
