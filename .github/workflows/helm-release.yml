@@ -1,12 +1,11 @@
 name: Helm Release
+
 on:
   push:
     branches:
-    - master
-    - v*
+      - master
     tags:
-    - v*
-  pull_request:
+      - v*
 
 permissions:
   packages: write
@@ -15,6 +14,7 @@ permissions:
 env:
   HELM_REGISTRY: ghcr.io
   CHART_DIR: deploy/chart/local-path-provisioner
+
 jobs:  
   build_push_helm_chart:
     name: Build and Push Chart
@@ -23,6 +23,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set Chart Tag
+        id: set_tag
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
+            echo "chart_tag=master-head" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+            echo "chart_tag=${version}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unknown ref: ${GITHUB_REF}"
+            exit 1
+          fi
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -30,7 +43,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish OCI helm chart
+      - name: Package Helm chart
         run: |
-          helm package ./${{ env.CHART_DIR }} --destination ./chart
+          helm package ./${{ env.CHART_DIR }} --destination ./chart --version ${{ steps.set_tag.outputs.chart_tag }}
+
+      - name: Push Helm chart
+        run: |
           helm push ./chart/*.tgz oci://${{ env.HELM_REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}/charts
