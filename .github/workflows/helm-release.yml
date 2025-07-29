@@ -27,7 +27,7 @@ jobs:
         id: set_tag
         run: |
           if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
-            echo "chart_tag=master-head" >> "$GITHUB_OUTPUT"
+            echo "chart_tag=0.0.0-master" >> "$GITHUB_OUTPUT"
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF#refs/tags/v}"
             echo "chart_tag=${version}" >> "$GITHUB_OUTPUT"
