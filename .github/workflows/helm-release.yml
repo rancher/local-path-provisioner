@@ -7,6 +7,11 @@ on:
     tags:
     - v*
   pull_request:
+
+permissions:
+  packages: write
+  contents: read
+
 env:
   HELM_REGISTRY: ghcr.io
   CHART_DIR: deploy/chart/local-path-provisioner
