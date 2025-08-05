@@ -62,3 +62,7 @@ data:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.helperPod.resources | nindent 12 }}
+          {{- with .Values.configmap.helperPod.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
