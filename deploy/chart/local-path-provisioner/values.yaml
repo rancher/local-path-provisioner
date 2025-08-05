@@ -167,6 +167,7 @@ configmap:
     name: "helper-pod"
     annotations: {}
     tolerations: []
+    securityContext: {}
 # Number of provisioner worker threads to call provision/delete simultaneously.
 # workerThreads: 4
 
