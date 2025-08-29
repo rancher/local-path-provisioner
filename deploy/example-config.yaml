@@ -29,6 +29,17 @@ data:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
+  clone: |-
+    #!/bin/sh
+    set -eu
+    mkdir -m 0777 -p "$VOL_DIR"
+    if [ -d "$SOURCE_VOL_DIR" ]; then
+      echo "Cloning data from $SOURCE_VOL_DIR to $VOL_DIR"
+      cp -a "$SOURCE_VOL_DIR"/* "$VOL_DIR"/ 2>/dev/null || true
+      echo "Clone completed successfully"
+    else
+      echo "Source directory $SOURCE_VOL_DIR not found, creating empty volume"
+    fi
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod

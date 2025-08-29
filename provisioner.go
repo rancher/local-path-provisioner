@@ -31,6 +31,7 @@ type ActionType string
 const (
 	ActionTypeCreate = "create"
 	ActionTypeDelete = "delete"
+	ActionTypeClone  = "clone"
 )
 
 const (
@@ -42,9 +43,11 @@ const (
 	helperDataVolName   = "data"
 	helperScriptVolName = "script"
 
-	envVolDir  = "VOL_DIR"
-	envVolMode = "VOL_MODE"
-	envVolSize = "VOL_SIZE_BYTES"
+	envVolDir       = "VOL_DIR"
+	envVolMode      = "VOL_MODE"
+	envVolSize      = "VOL_SIZE_BYTES"
+	envSourceVolDir = "SOURCE_VOL_DIR"
+	envSourceNode   = "SOURCE_NODE"
 )
 
 const (
@@ -91,6 +94,7 @@ type ConfigData struct {
 	CmdTimeoutSeconds int    `json:"cmdTimeoutSeconds,omitempty"`
 	SetupCommand      string `json:"setupCommand,omitempty"`
 	TeardownCommand   string `json:"teardownCommand,omitempty"`
+	CloneCommand      string `json:"cloneCommand,omitempty"`
 	StorageClassConfigData
 	StorageClassConfigs map[string]StorageClassConfigData `json:"storageClassConfigs"`
 }
@@ -325,6 +329,12 @@ func (p *LocalPathProvisioner) Provision(_ context.Context, opts pvController.Pr
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
+	
+	// Check if this is a clone request
+	if p.isCloneRequest(opts.PVC) {
+		return p.cloneVolume(opts, cfg)
+	}
+	
 	return p.provisionFor(opts, cfg)
 }
 
@@ -514,6 +524,171 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 	}
 	logrus.Infof("Retained volume %v", pv.Name)
 	return nil
+}
+
+// isCloneRequest checks if the PVC has a dataSource indicating a clone request
+func (p *LocalPathProvisioner) isCloneRequest(pvc *v1.PersistentVolumeClaim) bool {
+	return pvc.Spec.DataSource != nil && 
+		pvc.Spec.DataSource.Kind == "PersistentVolumeClaim" &&
+		pvc.Spec.DataSource.Name != ""
+}
+
+// cloneVolume handles volume cloning requests
+func (p *LocalPathProvisioner) cloneVolume(opts pvController.ProvisionOptions, cfg *StorageClassConfig) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
+	pvc := opts.PVC
+	
+	// Validate clone request
+	sourcePVC, err := p.kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Get(
+		p.ctx, pvc.Spec.DataSource.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, fmt.Errorf("failed to get source PVC %s: %v", pvc.Spec.DataSource.Name, err)
+	}
+	
+	// Validate that source PVC is bound
+	if sourcePVC.Status.Phase != v1.ClaimBound {
+		return nil, pvController.ProvisioningFinished, fmt.Errorf("source PVC %s is not bound, current phase: %s", sourcePVC.Name, sourcePVC.Status.Phase)
+	}
+	
+	// Validate storage classes match
+	if sourcePVC.Spec.StorageClassName == nil || *sourcePVC.Spec.StorageClassName != opts.StorageClass.Name {
+		sourceClass := ""
+		if sourcePVC.Spec.StorageClassName != nil {
+			sourceClass = *sourcePVC.Spec.StorageClassName
+		}
+		return nil, pvController.ProvisioningFinished, fmt.Errorf("source PVC storage class %s does not match target storage class %s", sourceClass, opts.StorageClass.Name)
+	}
+	
+	// Get source PV
+	sourcePV, err := p.kubeClient.CoreV1().PersistentVolumes().Get(
+		p.ctx, sourcePVC.Status.VolumeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, fmt.Errorf("failed to get source PV %s: %v", sourcePVC.Status.VolumeName, err)
+	}
+	
+	// Get source volume path and node
+	sourcePath, sourceNode, err := p.getPathAndNodeForPV(sourcePV, cfg)
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, fmt.Errorf("failed to get source volume path: %v", err)
+	}
+	
+	// Provision new volume similar to regular provisioning but with clone operation
+	return p.cloneVolumeFor(opts, cfg, sourcePath, sourceNode)
+}
+
+// cloneVolumeFor performs the actual volume cloning operation
+func (p *LocalPathProvisioner) cloneVolumeFor(opts pvController.ProvisionOptions, cfg *StorageClassConfig, sourcePath, sourceNode string) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
+	pvc := opts.PVC
+	node := opts.SelectedNode
+	storageClass := opts.StorageClass
+	
+	// Similar validation logic as regular provisioning
+	sharedFS, err := p.isSharedFilesystem(cfg)
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, err
+	}
+	
+	if !sharedFS {
+		if pvc.Spec.Selector != nil {
+			return nil, pvController.ProvisioningFinished, fmt.Errorf("claim.Spec.Selector is not supported")
+		}
+		for _, accessMode := range pvc.Spec.AccessModes {
+			if accessMode != v1.ReadWriteOnce && accessMode != v1.ReadWriteOncePod {
+				return nil, pvController.ProvisioningFinished, fmt.Errorf("NodePath only supports ReadWriteOnce and ReadWriteOncePod (1.22+) access modes")
+			}
+		}
+		if node == nil {
+			return nil, pvController.ProvisioningFinished, fmt.Errorf("configuration error, no node was specified")
+		}
+	}
+	
+	nodeName := ""
+	if node != nil {
+		nodeName = node.Name
+	}
+	
+	var requestedPath string
+	if storageClass.Parameters != nil {
+		if _, ok := storageClass.Parameters["nodePath"]; ok {
+			requestedPath = storageClass.Parameters["nodePath"]
+		}
+	}
+	
+	basePath, err := p.getPathOnNode(nodeName, requestedPath, cfg)
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, err
+	}
+	
+	name := opts.PVName
+	folderName := name
+	if storageClass.Parameters != nil {
+		if pathPattern, ok := storageClass.Parameters["pathPattern"]; ok {
+			folderName, err = pathFromPattern(pathPattern, opts)
+			if err != nil {
+				return nil, pvController.ProvisioningFinished, err
+			}
+		}
+	}
+	
+	path := filepath.Join(basePath, folderName)
+	logrus.Infof("Creating clone volume %v at %v from source %v", name, path, sourcePath)
+	
+	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	volumeMode := pvc.Spec.VolumeMode
+	
+	// Create clone command
+	cloneCmd := make([]string, 0, 2)
+	if p.config.CloneCommand != "" {
+		cloneCmd = append(cloneCmd, p.config.CloneCommand)
+	} else {
+		cloneCmd = append(cloneCmd, "/bin/sh", "/script/clone")
+	}
+	
+	// Execute clone helper pod
+	if err := p.createCloneHelperPod(cloneCmd, volumeOptions{
+		Path:        path,
+		Mode:        string(*volumeMode),
+		SizeInBytes: storage.Value(),
+		Node:        nodeName,
+	}, sourcePath, sourceNode, cfg); err != nil {
+		return nil, pvController.ProvisioningFinished, err
+	}
+	
+	// Determine volume type from annotations
+	volumeType := defaultVolumeType
+	if pvc.Annotations != nil {
+		if vType, ok := pvc.Annotations["volumeType"]; ok {
+			volumeType = vType
+		}
+	}
+	if volumeType == "" && storageClass.Annotations != nil {
+		if vType, ok := storageClass.Annotations["defaultVolumeType"]; ok {
+			volumeType = vType
+		}
+	}
+	
+	pvs, err := createPersistentVolumeSource(volumeType, path)
+	if err != nil {
+		return nil, pvController.ProvisioningFinished, err
+	}
+	
+	return &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Annotations: map[string]string{
+				nodeNameAnnotationKey: nodeName,
+			},
+		},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeReclaimPolicy: *storageClass.ReclaimPolicy,
+			AccessModes:                   pvc.Spec.AccessModes,
+			VolumeMode:                    volumeMode,
+			Capacity: v1.ResourceList{
+				v1.ResourceName(v1.ResourceStorage): storage,
+			},
+			PersistentVolumeSource: pvs,
+			StorageClassName:       storageClass.Name,
+		},
+	}, pvController.ProvisioningFinished, nil
 }
 
 func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, err error) {
@@ -724,6 +899,182 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		logrus.Infof("Volume %v has been %vd on %v", o.Name, action, o.Path)
 	} else {
 		logrus.Infof("Volume %v has been %vd on %v:%v", o.Name, action, o.Node, o.Path)
+	}
+	return nil
+}
+
+// createCloneHelperPod creates a helper pod for cloning operations
+func (p *LocalPathProvisioner) createCloneHelperPod(cmd []string, o volumeOptions, sourcePath, sourceNode string, cfg *StorageClassConfig) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to clone volume %v", o.Name)
+	}()
+	sharedFS, err := p.isSharedFilesystem(cfg)
+	if err != nil {
+		return err
+	}
+	if o.Name == "" || o.Path == "" || (!sharedFS && o.Node == "") {
+		return fmt.Errorf("invalid empty name or path or node")
+	}
+	if !filepath.IsAbs(o.Path) {
+		return fmt.Errorf("volume path %s is not absolute", o.Path)
+	}
+	o.Path = filepath.Clean(o.Path)
+	sourcePath = filepath.Clean(sourcePath)
+	
+	parentDir, volumeDir := filepath.Split(o.Path)
+	sourceParentDir, sourceVolumeDir := filepath.Split(sourcePath)
+	hostPathType := v1.HostPathDirectoryOrCreate
+	
+	lpvVolumes := []v1.Volume{
+		{
+			Name: helperDataVolName,
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: parentDir,
+					Type: &hostPathType,
+				},
+			},
+		},
+		{
+			Name: "source-data",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: sourceParentDir,
+					Type: &hostPathType,
+				},
+			},
+		},
+	}
+	
+	lpvTolerations := []v1.Toleration{
+		{
+			Key:      v1.TaintNodeDiskPressure,
+			Operator: v1.TolerationOpExists,
+			Effect:   v1.TaintEffectNoSchedule,
+		},
+	}
+	helperPod := p.helperPod.DeepCopy()
+
+	keyToPathItems := make([]v1.KeyToPath, 0, 3)
+
+	if p.config.SetupCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "setup",
+			Path: "setup",
+		})
+	}
+
+	if p.config.TeardownCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "teardown",
+			Path: "teardown",
+		})
+	}
+	
+	if p.config.CloneCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "clone",
+			Path: "clone",
+		})
+	}
+
+	if len(keyToPathItems) > 0 {
+		lpvVolumes = append(lpvVolumes, v1.Volume{
+			Name: "script",
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: p.configMapName,
+					},
+					Items: keyToPathItems,
+				},
+			},
+		})
+
+		scriptMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperScriptVolName, helperScriptDir)
+		scriptMount.MountPath = helperScriptDir
+	}
+
+	dataMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperDataVolName, parentDir)
+	parentDir = dataMount.MountPath
+	parentDir = strings.TrimSuffix(parentDir, string(filepath.Separator))
+	volumeDir = strings.TrimSuffix(volumeDir, string(filepath.Separator))
+	
+	sourceDataMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, "source-data", sourceParentDir)
+	sourceParentDir = sourceDataMount.MountPath
+	sourceParentDir = strings.TrimSuffix(sourceParentDir, string(filepath.Separator))
+	sourceVolumeDir = strings.TrimSuffix(sourceVolumeDir, string(filepath.Separator))
+	
+	if parentDir == "" || volumeDir == "" || !filepath.IsAbs(parentDir) ||
+		sourceParentDir == "" || sourceVolumeDir == "" || !filepath.IsAbs(sourceParentDir) {
+		return fmt.Errorf("invalid paths for clone: dest=%v, src=%v", o.Path, sourcePath)
+	}
+	
+	env := []v1.EnvVar{
+		{Name: envVolDir, Value: filepath.Join(parentDir, volumeDir)},
+		{Name: envVolMode, Value: string(o.Mode)},
+		{Name: envVolSize, Value: strconv.FormatInt(o.SizeInBytes, 10)},
+		{Name: envSourceVolDir, Value: filepath.Join(sourceParentDir, sourceVolumeDir)},
+		{Name: envSourceNode, Value: sourceNode},
+	}
+
+	// use different name for helper pods
+	helperPod.Name = (helperPod.Name + "-" + string(ActionTypeClone) + "-" + o.Name)
+	if len(helperPod.Name) > HelperPodNameMaxLength {
+		helperPod.Name = helperPod.Name[:HelperPodNameMaxLength]
+	}
+	helperPod.Namespace = p.namespace
+	if helperPod.Spec.NodeName == "" && o.Node != "" {
+		helperPod.Spec.NodeName = o.Node
+	}
+	helperPod.Spec.ServiceAccountName = p.serviceAccountName
+	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
+	if helperPod.Spec.Tolerations == nil {
+		helperPod.Spec.Tolerations = append(helperPod.Spec.Tolerations, lpvTolerations...)
+	}
+	helperPod.Spec.Volumes = append(helperPod.Spec.Volumes, lpvVolumes...)
+	helperPod.Spec.Containers[0].Command = cmd
+	helperPod.Spec.Containers[0].Env = append(helperPod.Spec.Containers[0].Env, env...)
+	helperPod.Spec.Containers[0].Args = []string{"-p", filepath.Join(parentDir, volumeDir),
+		"-s", strconv.FormatInt(o.SizeInBytes, 10),
+		"-m", string(o.Mode),
+		"-a", string(ActionTypeClone),
+		"-src", filepath.Join(sourceParentDir, sourceVolumeDir)}
+
+	logrus.Infof("create the clone helper pod %s into %s", helperPod.Name, p.namespace)
+	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(context.TODO(), helperPod, metav1.CreateOptions{})
+	if err != nil && !k8serror.IsAlreadyExists(err) {
+		return err
+	}
+
+	defer func() {
+		if err := p.saveHelperPodLogs(pod); err != nil {
+			logrus.Error(err.Error())
+		}
+		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(context.TODO(), helperPod.Name, metav1.DeleteOptions{})
+		if e != nil {
+			logrus.Errorf("unable to delete the clone helper pod: %v", e)
+		}
+	}()
+
+	completed := false
+	for i := 0; i < p.config.CmdTimeoutSeconds; i++ {
+		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(context.TODO(), helperPod.Name, metav1.GetOptions{}); err != nil {
+			return err
+		} else if pod.Status.Phase == v1.PodSucceeded {
+			completed = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !completed {
+		return fmt.Errorf("clone process timeout after %v seconds", p.config.CmdTimeoutSeconds)
+	}
+
+	if o.Node == "" {
+		logrus.Infof("Volume %v has been cloned on %v from source %v", o.Name, o.Path, sourcePath)
+	} else {
+		logrus.Infof("Volume %v has been cloned on %v:%v from source %v", o.Name, o.Node, o.Path, sourcePath)
 	}
 	return nil
 }
