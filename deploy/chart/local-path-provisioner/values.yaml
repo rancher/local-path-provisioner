@@ -49,6 +49,9 @@ storageClass:
   ## volumeBindingMode field controls when volume binding and dynamic provisioning should occur, can be  "Immediate" or "WaitForFirstConsumer"
   volumeBindingMode: WaitForFirstConsumer
 
+  ## allowedTopologies field controls on which nodes the volumes can be dynamically provisioned, an empty value means no topology constraints
+  allowedTopologies: []
+
   ## Set a path pattern, if unset the default will be used
   # pathPattern: "{{ .PVC.Namespace }}-{{ .PVC.Name }}"
 
