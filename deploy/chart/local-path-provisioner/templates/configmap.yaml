@@ -46,7 +46,9 @@ data:
       labels:
 {{ include "local-path-provisioner.labels" . | indent 8 }}
     spec:
-      priorityClassName: system-node-critical
+      {{- if .Values.configmap.helperPod.priorityClassName }}
+      priorityClassName: {{ .Values.configmap.helperPod.priorityClassName }}
+      {{- end }}
       tolerations:
         - key: node.kubernetes.io/disk-pressure
           operator: Exists
