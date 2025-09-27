@@ -74,6 +74,8 @@ default values.
 | `nodeSelector`                      | Node labels for Local Path Provisioner pod assignment                           | `{}`                                                                                |
 | `tolerations`                       | Node taints to tolerate                                                         | `[]`                                                                                |
 | `affinity`                          | Pod affinity                                                                    | `{}`                                                                                |
+| `priorityClassName`                 | Priority class name for the main provisioner pod                               | `""`                                                                                |
+| `configmap.helperPod.priorityClassName` | Priority class name for the helper pod                                    | `"system-node-critical"`                                                           |
 | `configmap.setup`                   | Configuration of script to execute setup operations on each node                | #!/bin/sh<br>while getopts "m:s:p:" opt<br>do<br>&emsp;case $opt in <br>&emsp;&emsp;p)<br>&emsp;&emsp;absolutePath=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;s)<br>&emsp;&emsp;sizeInBytes=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;m)<br>&emsp;&emsp;volMode=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;esac<br>done<br>mkdir -m 0777 -p ${absolutePath}                                    |
 | `configmap.teardown`                | Configuration of script to execute teardown operations on each node             | #!/bin/sh<br>while getopts "m:s:p:" opt<br>do<br>&emsp;case $opt in <br>&emsp;&emsp;p)<br>&emsp;&emsp;absolutePath=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;s)<br>&emsp;&emsp;sizeInBytes=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;&emsp;m)<br>&emsp;&emsp;volMode=$OPTARG<br>&emsp;&emsp;;;<br>&emsp;esac<br>done<br>rm -rf ${absolutePath}                                              |
 | `configmap.name`                    | configmap name                                                                  | `local-path-config`                                                                 |
@@ -84,6 +86,18 @@ Specify each parameter using the `--set key=value[,key=value]` argument to `helm
 
 ```console
 $ helm install ./deploy/chart/local-path-provisioner --name local-path-storage --namespace local-path-storage --set storageClass.provisionerName=rancher.io/local-path
+```
+
+To set a priority class for the provisioner pod:
+
+```console
+$ helm install ./deploy/chart/local-path-provisioner --name local-path-storage --namespace local-path-storage --set priorityClassName=high-priority
+```
+
+To set different priority classes for both main and helper pods:
+
+```console
+$ helm install ./deploy/chart/local-path-provisioner --name local-path-storage --namespace local-path-storage --set priorityClassName=high-priority --set configmap.helperPod.priorityClassName=system-cluster-critical
 ```
 
 Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the
