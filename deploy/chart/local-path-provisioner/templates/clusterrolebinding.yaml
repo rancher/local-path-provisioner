@@ -12,5 +12,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ template "local-path-provisioner.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ include "local-path-provisioner.namespace" . }}
 {{- end -}}
