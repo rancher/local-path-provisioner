@@ -43,6 +43,8 @@ data:
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      labels:
+{{ include "local-path-provisioner.labels" . | indent 8 }}
     spec:
       priorityClassName: system-node-critical
       tolerations:
