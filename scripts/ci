@@ -5,8 +5,8 @@ cd $(dirname $0)
 
 ./build
 ./test
-# ./validate
-# ./validate-ci
+./validate
+./validate-ci
 ./package
 
 image=`cat ../bin/latest_image`

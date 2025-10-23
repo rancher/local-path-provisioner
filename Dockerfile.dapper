@@ -3,10 +3,6 @@ FROM golang:1.25.1-alpine
 ARG DAPPER_HOST_ARCH
 ENV ARCH $DAPPER_HOST_ARCH
 
-ENV http_proxy=http://10.244.0.3:7890
-ENV https_proxy=http://10.244.0.3:7890
-ENV no_proxy=localhost,127.0.0.1 
-
 RUN apk -U add bash git gcc musl-dev docker vim less file curl wget ca-certificates jq
 RUN rm -rf /go/src /go/pkg
 RUN if [ "${ARCH}" == "amd64" ] || [ "${ARCH}" == "arm64" ]; then \

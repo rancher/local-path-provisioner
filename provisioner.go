@@ -19,17 +19,19 @@ import (
 )
 
 type LocalPathProvisioner struct {
+	name string
 	LocalPathCsiController
 }
 
 func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
-	configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml string) (*LocalPathProvisioner, error) {
+	configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml string, name string) (*LocalPathProvisioner, error) {
 	var err error
 	csiController, err := NewCsiController(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
 	if err != nil {
 		return nil, err
 	}
 	p := &LocalPathProvisioner{
+		name:                   name,
 		LocalPathCsiController: *csiController,
 	}
 	return p, nil
@@ -190,7 +192,7 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
-			Annotations: map[string]string{nodeNameAnnotationKey: nodeName},
+			Annotations: map[string]string{nodeNameAnnotationKey: nodeName, provisionerNameAnnotationKey: p.name},
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: *opts.StorageClass.ReclaimPolicy,
