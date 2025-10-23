@@ -30,6 +30,7 @@ var (
 	FlagProvisionerName           = "provisioner-name"
 	EnvProvisionerName            = "PROVISIONER_NAME"
 	DefaultProvisionerName        = "rancher.io/local-path"
+	DefaultResizerName            = "rancher.io/local-path-resizer"
 	FlagNamespace                 = "namespace"
 	EnvNamespace                  = "POD_NAMESPACE"
 	DefaultNamespace              = "local-path-storage"
@@ -281,7 +282,7 @@ func startDaemon(c *cli.Context) error {
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims().Informer()
 	volumeInformer := informerFactory.Core().V1().PersistentVolumes().Informer()
 
-	provisioner, err := NewProvisioner(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
+	provisioner, err := NewProvisioner(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml, provisionerName)
 	if err != nil {
 		return err
 	}
@@ -298,12 +299,12 @@ func startDaemon(c *cli.Context) error {
 		pvController.VolumesInformer(volumeInformer),
 	)
 
-	resizer, err := NewResizer(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
+	resizer, err := NewResizer(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml, DefaultResizerName, provisionerName)
 	if err != nil {
 		return err
 	}
 	rc := resizeController.NewResizeController(
-		LocalPathResizerName,
+		DefaultResizerName,
 		resizer,
 		kubeClient,
 		resyncPeriod,

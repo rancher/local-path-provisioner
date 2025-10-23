@@ -10,12 +10,12 @@ import (
 )
 
 const (
-	LocalPathResizerName = "LocalPathResizer"
-	ActionTypeResize     = "resize"
+	ActionTypeResize = "resize"
 )
 
 type LocalPathResizer struct {
-	name string
+	name            string
+	provisionerName string
 	LocalPathCsiController
 }
 
@@ -28,7 +28,19 @@ func (r *LocalPathResizer) DriverSupportsControlPlaneExpansion() bool {
 }
 
 func (r *LocalPathResizer) CanSupport(pv *v1.PersistentVolume, pvc *v1.PersistentVolumeClaim) bool {
-	return true
+	annotaions := pv.Annotations
+	for key, value := range annotaions {
+		if key == provisionerNameAnnotationKey && value == r.provisionerName {
+			return true
+		}
+
+		// fallback
+		if key == defaultProvisionerNameAnnotationKey && value == r.provisionerName {
+			return true
+		}
+	}
+	logrus.Debugf("Resize not supported: %v", pv)
+	return false
 }
 
 func (r *LocalPathResizer) Resize(pv *v1.PersistentVolume, requestSize resource.Quantity) (newSize resource.Quantity, fsResizeRequired bool, err error) {
@@ -67,13 +79,15 @@ func (r *LocalPathResizer) Resize(pv *v1.PersistentVolume, requestSize resource.
 }
 
 func NewResizer(ctx context.Context, kubeClient *clientset.Clientset,
-	configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml string) (*LocalPathResizer, error) {
+	configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml string, name string, provisionerName string) (*LocalPathResizer, error) {
 	var err error
 	csiController, err := NewCsiController(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
 	if err != nil {
 		return nil, err
 	}
 	r := &LocalPathResizer{
+		name:                   name,
+		provisionerName:        provisionerName,
 		LocalPathCsiController: *csiController,
 	}
 	return r, nil

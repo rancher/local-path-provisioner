@@ -50,7 +50,9 @@ const (
 )
 
 const (
-	nodeNameAnnotationKey = "local.path.provisioner/selected-node"
+	nodeNameAnnotationKey               = "local.path.provisioner/selected-node"
+	provisionerNameAnnotationKey        = "local.path.provisioner/provisioner-name"
+	defaultProvisionerNameAnnotationKey = "pv.kubernetes.io/provisioned-by"
 )
 
 var (
@@ -412,14 +414,17 @@ func (c *LocalPathCsiController) getPathOnNode(node string, requestedPath string
 		return "", fmt.Errorf("no valid config available")
 	}
 
-	sharedFS, err := c.isSharedFilesystem(config)
-	if err != nil {
-		return "", err
+	if config != nil {
+		sharedFS, err := c.isSharedFilesystem(config)
+		if err != nil {
+			return "", err
+		}
+		if sharedFS {
+			// we are ignoring 'node' and returning shared FS path
+			return config.SharedFileSystemPath, nil
+		}
 	}
-	if sharedFS {
-		// we are ignoring 'node' and returning shared FS path
-		return config.SharedFileSystemPath, nil
-	}
+
 	// we are working with local FS
 	npMap := config.NodePathMap[node]
 	if npMap == nil {
