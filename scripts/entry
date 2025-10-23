@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-git config --global --add safe.directory /go/src/github.com/rancher/local-path-provisioner
 mkdir -p bin dist
 if [ -e ./scripts/$1 ]; then
     ./scripts/"$@"
