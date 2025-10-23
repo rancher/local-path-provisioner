@@ -74,6 +74,28 @@ data:
         done
 
         rm -rf ${absolutePath}
+
+  resize: |-
+        #!/bin/sh
+        while getopts "m:s:p:" opt
+        do
+            case $opt in
+                p)
+                absolutePath=$OPTARG
+                ;;
+                s)
+                sizeInBytes=$OPTARG
+                ;;
+                m)
+                volMode=$OPTARG
+                ;;
+            esac
+        done
+
+        echo "VOL_DIR: $VOL_DIR" > "$VOL_DIR/.resizerdata"
+        echo "VOL_MODE: $VOL_MODE" >> "$VOL_DIR/.resizerdata"
+        echo "VOL_SIZE_BYTES: $VOL_SIZE_BYTES" >> "$VOL_DIR/.resizerdata"
+  
   helperPod.yaml: |-
         apiVersion: v1
         kind: Pod

@@ -39,6 +39,9 @@ rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims/status"]
+    verbs: ["patch"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -144,6 +147,12 @@ data:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
+  resize: |-
+    #!/bin/sh
+    set -eu
+    echo "VOL_DIR: $VOL_DIR" > "$VOL_DIR/.resizerdata"
+    echo "VOL_MODE: $VOL_MODE" >> "$VOL_DIR/.resizerdata"
+    echo "VOL_SIZE_BYTES: $VOL_SIZE_BYTES" >> "$VOL_DIR/.resizerdata"
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod
