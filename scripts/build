@@ -15,6 +15,7 @@ CGO_ENABLED=0 GOARCH=arm64 go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bi
 CGO_ENABLED=0 GOARCH=arm go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-arm
 CGO_ENABLED=0 GOARCH=ppc64le go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-ppc64le
 CGO_ENABLED=0 GOARCH=riscv64 go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-riscv64
+CGO_ENABLED=0 GOARCH=s390x go build -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" -o bin/local-path-provisioner-s390x
 if [ "$CROSS" = "true" ] && [ "$ARCH" = "amd64" ]; then
     GOOS=darwin go build -ldflags "$LINKFLAGS" -o bin/local-path-provisioner-darwin
     GOOS=windows go build -ldflags "$LINKFLAGS" -o bin/local-path-provisioner-windows
