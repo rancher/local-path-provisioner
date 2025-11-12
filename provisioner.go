@@ -542,13 +542,27 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg 
 
 	// Dealing with local filesystem
 
+	// First, capture node from annotation if present
+	var annoNode string
+	if pv.Annotations != nil {
+		if v, ok := pv.Annotations[nodeNameAnnotationKey]; ok {
+			annoNode = v
+		}
+	}
+
 	nodeAffinity := pv.Spec.NodeAffinity
 	if nodeAffinity == nil {
-		return "", "", fmt.Errorf("no NodeAffinity set")
+		if annoNode != "" {
+			return path, annoNode, nil
+		}
+		return "", "", fmt.Errorf("no NodeAffinity set and missing %s annotation", nodeNameAnnotationKey)
 	}
 	required := nodeAffinity.Required
 	if required == nil {
-		return "", "", fmt.Errorf("no NodeAffinity.Required set")
+		if annoNode != "" {
+			return path, annoNode, nil
+		}
+		return "", "", fmt.Errorf("no NodeAffinity.Required set and missing %s annotation", nodeNameAnnotationKey)
 	}
 
 	node = ""
@@ -556,7 +570,10 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg 
 		for _, expression := range selectorTerm.MatchExpressions {
 			if expression.Key == KeyNode && expression.Operator == v1.NodeSelectorOpIn {
 				if len(expression.Values) != 1 {
-					return "", "", fmt.Errorf("multiple values for the node affinity")
+					if annoNode != "" {
+						return path, annoNode, nil
+					}
+					return "", "", fmt.Errorf("multiple values for the node affinity and missing %s annotation", nodeNameAnnotationKey)
 				}
 				node = expression.Values[0]
 				break
@@ -567,7 +584,13 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg 
 		}
 	}
 	if node == "" {
-		return "", "", fmt.Errorf("cannot find affinited node")
+		if annoNode != "" {
+			return path, annoNode, nil
+		}
+		return "", "", fmt.Errorf("cannot find affinited node and missing %s annotation", nodeNameAnnotationKey)
+	}
+	if annoNode != "" && annoNode != node {
+		logrus.Debugf("PV %s node from NodeAffinity %s differs from annotation %s; using NodeAffinity", pv.Name, node, annoNode)
 	}
 	return path, node, nil
 }
