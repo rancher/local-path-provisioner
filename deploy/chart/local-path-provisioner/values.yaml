@@ -156,6 +156,10 @@ priorityClassName: ""
 
 podDisruptionBudget:
   enabled: false
+  # Select either maxUnavailable or minAvailable
+  #maxUnavailable:
+  #minAvailable:
+  #unhealthyPodEvictionPolicy: IfHealthyBudget
 
 configmap:
   # specify the config map name

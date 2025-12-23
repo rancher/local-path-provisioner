@@ -11,5 +11,5 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
-{{- toYaml (omit .Values.podDisruptionBudget "enabled") | indent 2 }}
-{{- end -}}
+{{ toYaml (omit .Values.podDisruptionBudget "enabled") | nindent 2 }}
+{{- end }}
