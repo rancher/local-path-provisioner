@@ -95,11 +95,13 @@ nodePathMap:
 #     ## OR
 #     # See above
 #     nodePathMap: []
-    
+
 podAnnotations: {}
 
 podSecurityContext: {}
   # runAsNonRoot: true
+
+hostUsers: true
 
 securityContext: {}
   # allowPrivilegeEscalation: false
