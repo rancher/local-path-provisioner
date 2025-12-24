@@ -317,7 +317,13 @@ func pathFromPattern(pattern string, opts pvController.ProvisionOptions) (string
 		return "", err
 	}
 
-	return buf.String(), nil
+	path := buf.String()
+	fixedBasePathPrefix := filepath.Join(opts.PVC.Namespace, opts.PVC.Name) + string(filepath.Separator)
+	if !strings.HasPrefix(path, fixedBasePathPrefix) {
+		return "", fmt.Errorf("pathPattern must start with {{ .PVC.Namespace }}/{{ .PVC.Name }}/: %s", path)
+	}
+
+	return path, nil
 }
 
 func (p *LocalPathProvisioner) Provision(_ context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
