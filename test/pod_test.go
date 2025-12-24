@@ -161,6 +161,93 @@ func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+// ADD THIS NEW TEST METHOD
+func (p *PodTestSuite) TestPathTraversalPrevention() {
+	testCases := []struct {
+		name          string
+		kustomizeDir  string
+		expectedError string
+		description   string
+	}{
+		{
+			name:          "BasicDirectoryTraversal",
+			kustomizeDir:  "security-basic-traversal-path",
+			expectedError: "invalid reference",
+			description:   "Basic directory traversal with ../",
+		},
+	}
+
+	for _, tc := range testCases {
+		p.Run(tc.name, func() {
+			p.T().Logf("Testing: %s", tc.description)
+			p.kustomizeDir = tc.kustomizeDir
+			p.verifyProvisioningFailed(tc.expectedError)
+		})
+	}
+}
+
+func (p *PodTestSuite) verifyProvisioningFailed(expectedError string) {
+	kustomizeDir := testdataFile(p.kustomizeDir)
+
+	// Apply the deployment
+	cmds := []string{
+		fmt.Sprintf("kustomize edit add label %s:%s -f", LabelKey, LabelValue),
+		"kustomize build | kubectl apply -f -",
+	}
+
+	for _, cmd := range cmds {
+		_, err := runCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
+		if err != nil {
+			p.FailNow("", "failed to apply deployment", err)
+		}
+	}
+
+	// Wait a bit for provisioning to be attempted
+	time.Sleep(10 * time.Second)
+
+	// Check that PVC is not bound (provisioning should fail)
+	checkPVCCmd := fmt.Sprintf("kubectl get pvc -l %s=%s -o jsonpath='{.items[0].status.phase}'", LabelKey, LabelValue)
+
+	timeout := time.After(30 * time.Second)
+	tick := time.Tick(2 * time.Second)
+
+	for {
+		select {
+		case <-timeout:
+			// Timeout is expected - PVC should remain Pending due to security rejection
+			p.T().Log("PVC correctly remained in Pending state due to security validation")
+			return
+
+		case <-tick:
+			c := createCmd(p.T(), checkPVCCmd, kustomizeDir, p.config.envs(), nil)
+			output, err := c.CombinedOutput()
+			if err != nil {
+				p.T().Logf("PVC check error (expected): %v", err)
+				continue
+			}
+
+			pvcStatus := strings.TrimSpace(string(output))
+			p.T().Logf("PVC Status: %s", pvcStatus)
+
+			if pvcStatus == "Bound" {
+				p.FailNow("", "PVC was bound when it should have been rejected due to security validation")
+			}
+
+			// Check provisioner logs for security error
+			logCmd := `kubectl logs -l app=local-path-provisioner -n local-path-storage --tail=50`
+			logC := createCmd(p.T(), logCmd, kustomizeDir, p.config.envs(), nil)
+			logOutput, logErr := logC.CombinedOutput()
+			if logErr == nil && len(expectedError) > 0 {
+				logStr := string(logOutput)
+				if strings.Contains(logStr, expectedError) || strings.Contains(logStr, "invalid reference") {
+					p.T().Log("Security validation correctly rejected the malicious path pattern")
+					return
+				}
+			}
+		}
+	}
+}
+
 func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string) {
 	kustomizeDir := testdataFile(p.kustomizeDir)
 

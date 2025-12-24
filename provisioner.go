@@ -376,6 +376,10 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 			err = errors.Wrapf(err, "failed to create path from pattern %v", pathPattern)
 			return nil, pvController.ProvisioningFinished, err
 		}
+		// Check for directory traversal attempts in the path.
+		if !filepath.IsLocal(folderName) {
+			return nil, pvController.ProvisioningFinished, fmt.Errorf("folder path contains invalid references: %s", folderName)
+		}
 	}
 
 	path := filepath.Join(basePath, folderName)
