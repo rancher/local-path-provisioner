@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-test-pod
+spec:
+  containers:
+  - name: test-container
+    image: busybox
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: test-volume
+      mountPath: /test-data
+  volumes:
+  - name: test-volume
+    persistentVolumeClaim:
+      claimName: security-test-pvc
+  restartPolicy: Never
