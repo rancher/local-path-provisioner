@@ -33,6 +33,8 @@ data:
     {{- .Values.configmap.setup | nindent 4 }}
   teardown: |-
     {{- .Values.configmap.teardown | nindent 4 }}
+  resize: |-
+    {{- .Values.configmap.resize | nindent 4 }}
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod
