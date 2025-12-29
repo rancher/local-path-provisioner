@@ -181,6 +181,26 @@ configmap:
     tolerations: []
     # Priority class name for the helper pod (defaults to system-node-critical)
     priorityClassName: "system-node-critical"
+    # Should the users map to system IDs
+    hostUsers: true
+    # pod level security controls
+    securityContext:
+      runAsNonRoot: false
+    # container level security controls
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - DAC_OVERRIDE
+      readOnlyRootFilesystem: true
+      runAsGroup: 0
+      runAsUser: 0
+      seccompProfile:
+        type: RuntimeDefault
+
 # Number of provisioner worker threads to call provision/delete simultaneously.
 # workerThreads: 4
 

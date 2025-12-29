@@ -49,6 +49,9 @@ data:
       {{- if .Values.configmap.helperPod.priorityClassName }}
       priorityClassName: {{ .Values.configmap.helperPod.priorityClassName }}
       {{- end }}
+      hostUsers: {{ .Values.configmap.helperPod.hostUsers }}
+      securityContext:
+        {{- toYaml .Values.configmap.helperPod.securityContext | nindent 8 }}
       tolerations:
         - key: node.kubernetes.io/disk-pressure
           operator: Exists
@@ -66,3 +69,5 @@ data:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.helperPod.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.configmap.helperPod.containerSecurityContext | nindent 12 }}
