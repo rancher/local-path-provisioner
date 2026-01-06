@@ -98,20 +98,23 @@ nodePathMap:
 
 podAnnotations: {}
 
-podSecurityContext: {}
-  # runAsNonRoot: true
+podSecurityContext:
+  runAsNonRoot: true
 
 hostUsers: true
 
-securityContext: {}
-  # allowPrivilegeEscalation: false
-  # seccompProfile:
-  #   type: RuntimeDefault
-  # capabilities:
-  #   drop: ["ALL"]
-  # runAsUser: 65534
-  # runAsGroup: 65534
-  # readOnlyRootFilesystem: true
+# NOTE: launches a helper pod with hostPath volume
+#       thus namespace must permit PSS privileged.
+#       Last checked on kubernetes 1.35
+securityContext:
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop: ["ALL"]
+  runAsUser: 65534
+  runAsGroup: 65534
+  readOnlyRootFilesystem: true
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
