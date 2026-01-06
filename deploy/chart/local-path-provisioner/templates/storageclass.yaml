@@ -16,6 +16,9 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: "{{ $values.storageClass.defaultClass }}"
     defaultVolumeType: "{{ $values.storageClass.defaultVolumeType }}"
+    {{- with $values.storageClass.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 provisioner: {{ template "local-path-provisioner.provisionerName" $dot }}
 volumeBindingMode: {{ $values.storageClass.volumeBindingMode }}
 reclaimPolicy: {{ $values.storageClass.reclaimPolicy }}
