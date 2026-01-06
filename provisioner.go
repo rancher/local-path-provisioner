@@ -300,7 +300,7 @@ type pvMetadata struct {
 	PVC    metav1.ObjectMeta
 }
 
-func pathFromPattern(pattern string, opts pvController.ProvisionOptions) (string, error) {
+func pathFromPattern(pattern string, opts pvController.ProvisionOptions, allowUnsafePath bool) (string, error) {
 	metadata := pvMetadata{
 		PVName: opts.PVName,
 		PVC:    opts.PVC.ObjectMeta,
@@ -319,7 +319,7 @@ func pathFromPattern(pattern string, opts pvController.ProvisionOptions) (string
 
 	path := buf.String()
 	fixedBasePathPrefix := filepath.Join(opts.PVC.Namespace, opts.PVC.Name) + string(filepath.Separator)
-	if !strings.HasPrefix(path, fixedBasePathPrefix) {
+	if !allowUnsafePath && !strings.HasPrefix(path, fixedBasePathPrefix) {
 		return "", fmt.Errorf("pathPattern must start with {{ .PVC.Namespace }}/{{ .PVC.Name }}/: %s", path)
 	}
 
@@ -377,13 +377,22 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 
 	pathPattern, exists := opts.StorageClass.Parameters["pathPattern"]
 	if exists {
-		folderName, err = pathFromPattern(pathPattern, opts)
+		allowUnsafePath := false
+		allowUnsafePathPattern, exists := opts.StorageClass.Parameters["allowUnsafePathPattern"]
+		if exists {
+			allowUnsafePath, err = strconv.ParseBool(allowUnsafePathPattern)
+			if err != nil {
+				logrus.Warnf("failed to parse allowUnsafePathPattern %v, defaulting to false: %v", allowUnsafePathPattern, err)
+				allowUnsafePath = false
+			}
+		}
+		folderName, err = pathFromPattern(pathPattern, opts, allowUnsafePath)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to create path from pattern %v", pathPattern)
 			return nil, pvController.ProvisioningFinished, err
 		}
 		// Check for directory traversal attempts in the path.
-		if !filepath.IsLocal(folderName) {
+		if !allowUnsafePath && !filepath.IsLocal(folderName) {
 			return nil, pvController.ProvisioningFinished, fmt.Errorf("folder path contains invalid references: %s", folderName)
 		}
 	}

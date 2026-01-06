@@ -161,6 +161,12 @@ func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+func (p *PodTestSuite) TestPodWithSkipPathPatternCheck() {
+	p.kustomizeDir = "skip-path-pattern-check"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
 // ADD THIS NEW TEST METHOD
 func (p *PodTestSuite) TestPathTraversalPrevention() {
 	testCases := []struct {
