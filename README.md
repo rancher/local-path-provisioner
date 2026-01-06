@@ -27,7 +27,7 @@ In this setup, the directory `/opt/local-path-provisioner` will be used across a
 
 - Stable
 ```
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.33/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.34/deploy/local-path-storage.yaml
 ```
 
 - Development
@@ -38,7 +38,7 @@ kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisione
 Or, use `kustomize` to deploy.
 - Stable
 ```
-kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=v0.0.33" | kubectl apply -f -
+kustomize build "github.com/rancher/local-path-provisioner/deploy?ref=v0.0.34" | kubectl apply -f -
 ```
 
 - Development
@@ -278,6 +278,10 @@ A few things to note; the annotation for the `StorageClass` will apply to all vo
 If more than one `paths` are specified in the `nodePathMap` the path is chosen randomly. To make the provisioner choose a specific path, use a `storageClass` defined with a parameter called `nodePath`. Note that this path should be defined in the `nodePathMap`.
 
 By default the volume subdirectory is named using the template `{{ .PVName }}_{{ .PVC.Namespace }}_{{ .PVC.Name }}` which make the directory specific to the PV instance. The template can be changed using the `pathPattern` parameter which is interpreted as a go template. The template has access to the PV name using the `PVName` variable and the PVC metadata object, including labels and annotations, with the `PVC` variable.
+
+When `pathPattern` is set, the rendered path must start with `{{ .PVC.Namespace }}/{{ .PVC.Name }}/` and must not contain directory traversal (for example `../`).
+
+If you need to keep an existing `pathPattern` that does not follow the prefix requirement, you can opt out by setting `allowUnsafePathPattern: "true"` on the StorageClass (either in `parameters` or `metadata.annotations`). When enabled, the provisioner will skip these validations.
 ```
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -286,7 +290,7 @@ metadata:
 provisioner: rancher.io/local-path
 parameters:
   nodePath: /data/ssd
-  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}"
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}/"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
@@ -301,7 +305,7 @@ To uninstall, execute:
 
 - Stable
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.33/deploy/local-path-storage.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.34/deploy/local-path-storage.yaml
 ```
 
 - Development
