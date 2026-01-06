@@ -167,6 +167,12 @@ func (p *PodTestSuite) TestPodWithSkipPathPatternCheck() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+func (p *PodTestSuite) TestPodWithSkipPathPatternCheckByAnnotation() {
+	p.kustomizeDir = "skip-path-pattern-check-by-annotation"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
 // ADD THIS NEW TEST METHOD
 func (p *PodTestSuite) TestPathTraversalPrevention() {
 	testCases := []struct {

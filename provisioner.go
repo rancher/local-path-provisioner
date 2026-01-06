@@ -317,9 +317,13 @@ func pathFromPattern(pattern string, opts pvController.ProvisionOptions, allowUn
 		return "", err
 	}
 
+	if allowUnsafePath {
+		return buf.String(), nil
+	}
+
 	path := buf.String()
 	fixedBasePathPrefix := filepath.Join(opts.PVC.Namespace, opts.PVC.Name) + string(filepath.Separator)
-	if !allowUnsafePath && !strings.HasPrefix(path, fixedBasePathPrefix) {
+	if !strings.HasPrefix(path, fixedBasePathPrefix) {
 		return "", fmt.Errorf("pathPattern must start with {{ .PVC.Namespace }}/{{ .PVC.Name }}/: %s", path)
 	}
 
@@ -384,6 +388,16 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 			if err != nil {
 				logrus.Warnf("failed to parse allowUnsafePathPattern %v, defaulting to false: %v", allowUnsafePathPattern, err)
 				allowUnsafePath = false
+			}
+		} else {
+			// Read from storageclass annotation for backward compatibility
+			allowUnsafePathAnnotation, exists := opts.StorageClass.GetAnnotations()["allowUnsafePathPattern"]
+			if exists {
+				allowUnsafePath, err = strconv.ParseBool(allowUnsafePathAnnotation)
+				if err != nil {
+					logrus.Warnf("failed to parse allow-unsafe-path-pattern annotation %v, defaulting to false: %v", allowUnsafePathAnnotation, err)
+					allowUnsafePath = false
+				}
 			}
 		}
 		folderName, err = pathFromPattern(pathPattern, opts, allowUnsafePath)
