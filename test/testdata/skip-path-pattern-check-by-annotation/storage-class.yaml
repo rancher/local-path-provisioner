@@ -1,11 +1,12 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: local-path-skip-path-pattern-check
+  name: local-path-skip-path-pattern-check-by-annotation
+  annotations:
+    allowUnsafePathPattern: "true"
 provisioner: rancher.io/local-path
 parameters:
   nodePath: /opt/local-path-provisioner
-  allowUnsafePathPattern: "true"
   pathPattern: "/opt/../{{ .PVC.Namespace }}_{{ .PVC.Name }}/../etc/"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
