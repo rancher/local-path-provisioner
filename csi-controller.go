@@ -609,6 +609,7 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	}
 	cfg.SetupCommand = data.SetupCommand
 	cfg.TeardownCommand = data.TeardownCommand
+	cfg.ResizeCommand = data.ResizeCommand
 	if data.CmdTimeoutSeconds > 0 {
 		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
 	} else {
