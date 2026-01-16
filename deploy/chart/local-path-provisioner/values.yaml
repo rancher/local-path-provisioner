@@ -182,6 +182,7 @@ configmap:
     name: "helper-pod"
     annotations: {}
     tolerations: []
+    securityContext: {}
     # Priority class name for the helper pod (defaults to system-node-critical)
     priorityClassName: "system-node-critical"
 # Number of provisioner worker threads to call provision/delete simultaneously.
