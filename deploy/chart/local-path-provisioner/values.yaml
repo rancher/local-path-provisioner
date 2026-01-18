@@ -101,20 +101,23 @@ nodePathMap:
 
 podAnnotations: {}
 
-podSecurityContext: {}
-  # runAsNonRoot: true
+podSecurityContext:
+  runAsNonRoot: true
 
 hostUsers: true
 
-securityContext: {}
-  # allowPrivilegeEscalation: false
-  # seccompProfile:
-  #   type: RuntimeDefault
-  # capabilities:
-  #   drop: ["ALL"]
-  # runAsUser: 65534
-  # runAsGroup: 65534
-  # readOnlyRootFilesystem: true
+# NOTE: launches a helper pod with hostPath volume
+#       thus namespace must permit PSS privileged.
+#       Last checked on kubernetes 1.35
+securityContext:
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop: ["ALL"]
+  runAsUser: 65534
+  runAsGroup: 65534
+  readOnlyRootFilesystem: true
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
@@ -184,6 +187,26 @@ configmap:
     tolerations: []
     # Priority class name for the helper pod (defaults to system-node-critical)
     priorityClassName: "system-node-critical"
+    # Should the users map to system IDs
+    hostUsers: true
+    # pod level security controls
+    securityContext:
+      runAsNonRoot: false
+    # container level security controls
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - DAC_OVERRIDE
+      readOnlyRootFilesystem: true
+      runAsGroup: 0
+      runAsUser: 0
+      seccompProfile:
+        type: RuntimeDefault
+
 # Number of provisioner worker threads to call provision/delete simultaneously.
 # workerThreads: 4
 
