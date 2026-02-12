@@ -32,6 +32,7 @@ type ActionType string
 const (
 	ActionTypeCreate = "create"
 	ActionTypeDelete = "delete"
+	ActionTypeResize = "resize"
 )
 
 const (
@@ -43,9 +44,10 @@ const (
 	helperDataVolName   = "data"
 	helperScriptVolName = "script"
 
-	envVolDir  = "VOL_DIR"
-	envVolMode = "VOL_MODE"
-	envVolSize = "VOL_SIZE_BYTES"
+	envVolDir       = "VOL_DIR"
+	envVolMode      = "VOL_MODE"
+	envVolSize      = "VOL_SIZE_BYTES"
+	envVolQuotaType = "VOL_QUOTA_TYPE"
 )
 
 const (
@@ -54,7 +56,13 @@ const (
 )
 
 const (
-	nodeNameAnnotationKey = "local.path.provisioner/selected-node"
+	nodeNameAnnotationKey  = "local.path.provisioner/selected-node"
+	quotaTypeAnnotationKey = "local.path.provisioner/quota-type"
+
+	// Resize annotations on PVC
+	annRequestedSize = "local.path.provisioner/requested-size" // user sets this to trigger shrink
+	annResizeStatus  = "local.path.provisioner/resize-status"  // "pending", "in-progress", "completed", "failed"
+	annResizeMessage = "local.path.provisioner/resize-message" // human-readable status message
 )
 
 var (
@@ -222,6 +230,7 @@ type ConfigData struct {
 	CmdTimeoutSeconds int    `json:"cmdTimeoutSeconds,omitempty"`
 	SetupCommand      string `json:"setupCommand,omitempty"`
 	TeardownCommand   string `json:"teardownCommand,omitempty"`
+	ResizeCommand     string `json:"resizeCommand,omitempty"`
 	StorageClassConfigData
 	StorageClassConfigs map[string]StorageClassConfigData `json:"storageClassConfigs"`
 }
@@ -246,6 +255,7 @@ type Config struct {
 	CmdTimeoutSeconds int
 	SetupCommand      string
 	TeardownCommand   string
+	ResizeCommand     string
 	StorageClassConfig
 	StorageClassConfigs map[string]StorageClassConfig
 }
@@ -845,6 +855,7 @@ type volumeOptions struct {
 	Mode        v1.PersistentVolumeMode
 	SizeInBytes int64
 	Node        string
+	QuotaType   string
 }
 
 func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions, cfg *StorageClassConfig) (err error) {
@@ -884,7 +895,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 	}
 	helperPod := p.helperPod.DeepCopy()
 
-	keyToPathItems := make([]v1.KeyToPath, 0, 2)
+	keyToPathItems := make([]v1.KeyToPath, 0, 3)
 
 	if p.config.SetupCommand == "" {
 		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
@@ -897,6 +908,13 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
 			Key:  "teardown",
 			Path: "teardown",
+		})
+	}
+
+	if p.config.ResizeCommand == "" {
+		keyToPathItems = append(keyToPathItems, v1.KeyToPath{
+			Key:  "resize",
+			Path: "resize",
 		})
 	}
 
@@ -929,6 +947,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		{Name: envVolDir, Value: filepath.Join(parentDir, volumeDir)},
 		{Name: envVolMode, Value: string(o.Mode)},
 		{Name: envVolSize, Value: strconv.FormatInt(o.SizeInBytes, 10)},
+		{Name: envVolQuotaType, Value: o.QuotaType},
 	}
 
 	// use different name for helper pods
@@ -980,6 +999,10 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		} else if pod.Status.Phase == v1.PodSucceeded {
 			completed = true
 			break
+		} else if pod.Status.Phase == v1.PodFailed {
+			reason := extractPodFailureReason(pod)
+			logs := p.getHelperPodLogsString(pod)
+			return fmt.Errorf("helper pod failed: %s (logs: %s)", reason, truncateLogs(logs, 500))
 		}
 		time.Sleep(1 * time.Second)
 	}
@@ -993,6 +1016,122 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		logrus.Infof("Volume %v has been %vd on %v:%v", o.Name, action, o.Node, o.Path)
 	}
 	return nil
+}
+
+// createHelperPodWithOutput is like createHelperPod but returns the pod's stdout output.
+// Used by the resize controller for check-usage operations that need to parse the output.
+func (p *LocalPathProvisioner) createHelperPodWithOutput(action ActionType, cmd []string, o volumeOptions, cfg *StorageClassConfig) (output string, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to %v volume %v (with output)", action, o.Name)
+	}()
+	sharedFS, err := p.isSharedFilesystem(cfg)
+	if err != nil {
+		return "", err
+	}
+	if o.Name == "" || o.Path == "" || (!sharedFS && o.Node == "") {
+		return "", fmt.Errorf("invalid empty name or path or node")
+	}
+	if !filepath.IsAbs(o.Path) {
+		return "", fmt.Errorf("volume path %s is not absolute", o.Path)
+	}
+	o.Path = filepath.Clean(o.Path)
+	parentDir, volumeDir := filepath.Split(o.Path)
+	hostPathType := v1.HostPathDirectoryOrCreate
+	lpvVolumes := []v1.Volume{
+		{
+			Name: helperDataVolName,
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: parentDir,
+					Type: &hostPathType,
+				},
+			},
+		},
+	}
+	helperPod := p.helperPod.DeepCopy()
+
+	keyToPathItems := []v1.KeyToPath{
+		{Key: "resize", Path: "resize"},
+	}
+	lpvVolumes = append(lpvVolumes, v1.Volume{
+		Name: "script",
+		VolumeSource: v1.VolumeSource{
+			ConfigMap: &v1.ConfigMapVolumeSource{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: p.configMapName,
+				},
+				Items: keyToPathItems,
+			},
+		},
+	})
+	scriptMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperScriptVolName, helperScriptDir)
+	scriptMount.MountPath = helperScriptDir
+
+	dataMount := addVolumeMount(&helperPod.Spec.Containers[0].VolumeMounts, helperDataVolName, parentDir)
+	parentDir = dataMount.MountPath
+	parentDir = strings.TrimSuffix(parentDir, string(filepath.Separator))
+	volumeDir = strings.TrimSuffix(volumeDir, string(filepath.Separator))
+	if parentDir == "" || volumeDir == "" || !filepath.IsAbs(parentDir) {
+		return "", fmt.Errorf("invalid path %v for %v", action, o.Path)
+	}
+	env := []v1.EnvVar{
+		{Name: envVolDir, Value: filepath.Join(parentDir, volumeDir)},
+		{Name: envVolMode, Value: string(o.Mode)},
+		{Name: envVolSize, Value: strconv.FormatInt(o.SizeInBytes, 10)},
+		{Name: envVolQuotaType, Value: o.QuotaType},
+	}
+
+	helperPod.Name = (helperPod.Name + "-" + string(action) + "-" + o.Name)
+	if len(helperPod.Name) > HelperPodNameMaxLength {
+		helperPod.Name = helperPod.Name[:HelperPodNameMaxLength]
+	}
+	helperPod.Namespace = p.namespace
+	if helperPod.Spec.NodeName == "" && o.Node != "" {
+		helperPod.Spec.NodeName = o.Node
+	}
+	helperPod.Spec.ServiceAccountName = p.serviceAccountName
+	helperPod.Spec.RestartPolicy = v1.RestartPolicyNever
+	helperPod.Spec.Volumes = append(helperPod.Spec.Volumes, lpvVolumes...)
+	helperPod.Spec.Containers[0].Command = cmd
+	helperPod.Spec.Containers[0].Env = append(helperPod.Spec.Containers[0].Env, env...)
+
+	logrus.Infof("create the helper pod %s into %s (with output capture)", helperPod.Name, p.namespace)
+	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(context.TODO(), helperPod, metav1.CreateOptions{})
+	if err != nil && !k8serror.IsAlreadyExists(err) {
+		return "", err
+	}
+
+	defer func() {
+		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(context.TODO(), helperPod.Name, metav1.DeleteOptions{})
+		if e != nil {
+			logrus.Errorf("unable to delete the helper pod: %v", e)
+		}
+	}()
+
+	completed := false
+	for i := 0; i < p.config.CmdTimeoutSeconds; i++ {
+		if pod, err = p.kubeClient.CoreV1().Pods(p.namespace).Get(context.TODO(), helperPod.Name, metav1.GetOptions{}); err != nil {
+			return "", err
+		} else if pod.Status.Phase == v1.PodSucceeded {
+			completed = true
+			break
+		} else if pod.Status.Phase == v1.PodFailed {
+			reason := extractPodFailureReason(pod)
+			logs := p.getHelperPodLogsString(pod)
+			return "", fmt.Errorf("helper pod failed: %s (logs: %s)", reason, truncateLogs(logs, 500))
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !completed {
+		return "", fmt.Errorf("helper pod timeout after %v seconds", p.config.CmdTimeoutSeconds)
+	}
+
+	// Capture output before cleanup
+	output, err = p.getHelperPodOutput(pod)
+	if err != nil {
+		logrus.Warnf("failed to capture helper pod output: %v", err)
+	}
+	return output, nil
 }
 
 func addVolumeMount(mounts *[]v1.VolumeMount, name, mountPath string) *v1.VolumeMount {
@@ -1064,6 +1203,7 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	}
 	cfg.SetupCommand = data.SetupCommand
 	cfg.TeardownCommand = data.TeardownCommand
+	cfg.ResizeCommand = data.ResizeCommand
 	if data.CmdTimeoutSeconds > 0 {
 		cfg.CmdTimeoutSeconds = data.CmdTimeoutSeconds
 	} else {
@@ -1203,5 +1343,64 @@ func (p *LocalPathProvisioner) saveHelperPodLogs(pod *v1.Pod) (err error) {
 	}
 	logrus.Infof("End of %s logs", pod.Name)
 	return nil
+}
+
+// getHelperPodOutput retrieves the stdout output from a helper pod.
+// Used by the resize controller to parse structured output (e.g. USAGE_BYTES=N).
+func (p *LocalPathProvisioner) getHelperPodOutput(pod *v1.Pod) (string, error) {
+	podLogOpts := v1.PodLogOptions{
+		Container: "helper-pod",
+	}
+	req := p.kubeClient.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
+	podLogs, err := req.Stream(context.TODO())
+	if err != nil {
+		return "", fmt.Errorf("error opening log stream for %s: %v", pod.Name, err)
+	}
+	defer podLogs.Close()
+
+	buf := new(bytes.Buffer)
+	if _, err := io.Copy(buf, podLogs); err != nil {
+		return "", fmt.Errorf("error reading logs from %s: %v", pod.Name, err)
+	}
+	return buf.String(), nil
+}
+
+// getHelperPodLogsString retrieves pod logs as a string for error reporting.
+// Returns an empty string if logs cannot be retrieved.
+func (p *LocalPathProvisioner) getHelperPodLogsString(pod *v1.Pod) string {
+	output, err := p.getHelperPodOutput(pod)
+	if err != nil {
+		logrus.Warnf("failed to retrieve helper pod logs for %s: %v", pod.Name, err)
+		return ""
+	}
+	return strings.TrimSpace(output)
+}
+
+// extractPodFailureReason extracts a human-readable failure reason from a failed pod.
+func extractPodFailureReason(pod *v1.Pod) string {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Terminated != nil {
+			t := cs.State.Terminated
+			if t.Message != "" {
+				return fmt.Sprintf("exit code %d: %s", t.ExitCode, t.Message)
+			}
+			if t.Reason != "" {
+				return fmt.Sprintf("exit code %d (%s)", t.ExitCode, t.Reason)
+			}
+			return fmt.Sprintf("exit code %d", t.ExitCode)
+		}
+	}
+	if pod.Status.Message != "" {
+		return pod.Status.Message
+	}
+	return "unknown failure reason"
+}
+
+// truncateLogs truncates a string to maxLen characters, appending "..." if truncated.
+func truncateLogs(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 

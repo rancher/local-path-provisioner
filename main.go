@@ -275,6 +275,11 @@ func startDaemon(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Start resize controller (handles PVC expand and shrink)
+	resizeCtrl := NewResizeController(ctx, kubeClient, provisioner, provisionerName)
+	go resizeCtrl.Run(ctx)
+
 	pc := pvController.NewProvisionController(
 		ctx,
 		kubeClient,
