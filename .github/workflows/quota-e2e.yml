@@ -1,0 +1,106 @@
+name: quota-e2e
+on:
+  push:
+    branches:
+    - master
+    - v*
+  pull_request:
+
+jobs:
+  quota-e2e:
+    name: XFS Quota E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xfsprogs
+
+    - name: Verify XFS quota kernel support
+      run: |
+        # Load XFS module if not already loaded
+        sudo modprobe xfs || true
+        cat /proc/filesystems | grep -q xfs && echo "XFS filesystem support: OK" || echo "XFS not in /proc/filesystems (will load on mount)"
+        # Kernel config check (informational)
+        grep -i xfs_quota /boot/config-$(uname -r) || echo "No /boot/config found (normal for cloud kernels)"
+
+    - name: Create loopback XFS filesystem
+      run: |
+        truncate -s 2G /tmp/xfs-test.img
+        sudo mkfs.xfs /tmp/xfs-test.img
+        sudo mkdir -p /tmp/xfs-mount
+        sudo mount -o loop,pquota /tmp/xfs-test.img /tmp/xfs-mount
+        sudo chmod 777 /tmp/xfs-mount
+        # Create project quota tracking files on the host
+        sudo touch /tmp/xfs-mount-projects
+        sudo chmod 666 /tmp/xfs-mount-projects
+        sudo touch /tmp/xfs-mount-projid
+        sudo chmod 666 /tmp/xfs-mount-projid
+        # Verify mount
+        mount | grep xfs-mount
+        echo "Loopback XFS filesystem ready"
+
+    - name: Build provisioner binary
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/local-path-provisioner-amd64 .
+
+    - name: Build provisioner image
+      run: |
+        cp -r bin package/
+        docker build -t local-path-provisioner:dev -f package/Dockerfile .
+
+    - name: Build quota helper image
+      run: |
+        docker build -t local-path-quota-helper:dev -f package/Dockerfile.quota-helper .
+
+    - name: Install Kind
+      uses: helm/kind-action@v1
+      with:
+        install_only: true
+
+    - name: Install kustomize
+      run: |
+        which kustomize || go install sigs.k8s.io/kustomize/kustomize/v5@latest
+
+    - name: Run quota CI e2e tests
+      run: |
+        PROVISIONER_IMAGE=local-path-provisioner:dev \
+        QUOTA_HELPER_IMAGE=local-path-quota-helper:dev \
+        go test -tags quota_ci_e2e -v -timeout 20m ./test/
+
+    - name: Collect logs on failure
+      if: failure()
+      run: |
+        echo "=== Kind cluster info ==="
+        kubectl cluster-info --context kind-kind 2>/dev/null || true
+        echo ""
+        echo "=== Pods in all namespaces ==="
+        kubectl get pods -A 2>/dev/null || true
+        echo ""
+        echo "=== Provisioner logs ==="
+        kubectl logs -l app=local-path-provisioner -n local-path-storage --tail=200 2>/dev/null || true
+        echo ""
+        echo "=== Events ==="
+        kubectl get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -50 || true
+        echo ""
+        echo "=== PVCs ==="
+        kubectl get pvc -A 2>/dev/null || true
+        echo ""
+        echo "=== PVs ==="
+        kubectl get pv 2>/dev/null || true
+
+    - name: Cleanup
+      if: always()
+      run: |
+        kind delete cluster 2>/dev/null || true
+        sudo umount /tmp/xfs-mount 2>/dev/null || true
+        sudo losetup -D 2>/dev/null || true

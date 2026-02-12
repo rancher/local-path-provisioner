@@ -1,0 +1,15 @@
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+nodes:
+- role: control-plane
+- role: worker
+  extraMounts:
+  # Loopback XFS filesystem mounted on the host with pquota
+  - hostPath: /tmp/xfs-mount
+    containerPath: /mnt/data
+    propagation: Bidirectional
+  # XFS project quota tracking files
+  - hostPath: /tmp/xfs-mount-projects
+    containerPath: /etc/projects
+  - hostPath: /tmp/xfs-mount-projid
+    containerPath: /etc/projid
