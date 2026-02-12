@@ -12,9 +12,27 @@ Dynamic provisioning the volume using [hostPath](https://kubernetes.io/docs/conc
 * Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-sigs/sig-storage-local-static-provisioner) cannot do dynamic provisioning for the local volumes.
 * Local based persistent volumes are an experimental feature ([example usage](examples/pvc-with-local-volume/pvc.yaml)).
 
-### Cons
-1. No support for the volume capacity limit currently.
-    1. The capacity limit will be ignored for now.
+### Volume Capacity Limits
+
+The provisioner supports three types of volume capacity enforcement:
+
+1. **Per-PVC Size Validation** (provisioning-time check)
+   Rejects PVC creation if the requested storage falls outside configured `minSize` / `maxSize` bounds. Configured via StorageClass `.parameters` or `config.json` `storageClassConfigs`. No special host requirements.
+
+2. **Per-Path Capacity Budget** (provisioning-time check)
+   Tracks total allocated bytes per `(node, path)` pair and rejects new PVCs that would exceed a path's `maxCapacity`. Configured in `config.json` `nodePathMap` using the object path format `{"path": "/mnt/data", "maxCapacity": "100Gi"}`. No special host requirements.
+
+3. **Filesystem-Level Quota Enforcement** (runtime enforcement via XFS project quotas)
+   Hard-limits the amount of data a pod can write to its PVC volume using XFS project quotas. If a pod writes beyond the PVC's requested size, it receives `ENOSPC` (No space left on device). Configured via StorageClass parameter `quotaEnforcement: xfs`.
+
+   **Requirements for filesystem-level enforcement:**
+   - The underlying storage path must be on an **XFS filesystem** mounted with the `prjquota` option
+   - Host must have `/etc/projects` and `/etc/projid` files (created via `touch`)
+   - The **quota-helper image** (`local-path-quota-helper`) must be used as the helper pod image, providing `xfsprogs` and `flock` for quota operations
+   - The helper pod runs as **privileged** with host mounts for `/etc/projects`, `/etc/projid`, `/dev`, and `/var/lock`
+   - The setup and teardown scripts in the ConfigMap must be replaced with the quota-aware versions from `package/quota-helper/`
+
+Features 1 and 2 work on any filesystem and require no special host setup. Feature 3 requires XFS with project quotas enabled.
 
 ## Requirement
 Kubernetes v1.12+.
