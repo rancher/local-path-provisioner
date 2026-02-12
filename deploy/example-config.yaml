@@ -19,7 +19,21 @@ data:
                     "node":"yasker-lp-dev3",
                     "paths":[]
             }
-            ]
+            ],
+            "storageClassConfigs": {
+                    "local-path-limited": {
+                            "minSize": "1Gi",
+                            "maxSize": "50Gi",
+                            "nodePathMap": [
+                            {
+                                    "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                                    "paths": [
+                                            {"path": "/opt/local-path-provisioner", "maxCapacity": "200Gi"}
+                                    ]
+                            }
+                            ]
+                    }
+            }
     }
   setup: |-
     #!/bin/sh

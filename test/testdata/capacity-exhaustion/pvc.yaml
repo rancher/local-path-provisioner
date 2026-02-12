@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: capacity-pvc-1
+spec:
+  storageClassName: local-path-capacity-limited
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 800Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: capacity-pvc-2
+spec:
+  storageClassName: local-path-capacity-limited
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 800Mi

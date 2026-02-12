@@ -63,6 +63,99 @@ var (
 	HelperPodNameMaxLength = 128
 )
 
+// CapacityTracker tracks allocated storage per (node, path) pair.
+// It is used to enforce per-path capacity budgets.
+type CapacityTracker struct {
+	mu        sync.RWMutex
+	allocated map[string]int64 // key: "node:path" → total allocated bytes
+}
+
+func newCapacityTracker() *CapacityTracker {
+	return &CapacityTracker{
+		allocated: make(map[string]int64),
+	}
+}
+
+func capacityKey(node, basePath string) string {
+	return node + ":" + basePath
+}
+
+// Allocate adds sizeBytes to the tracked allocation for the given key.
+func (ct *CapacityTracker) Allocate(node, basePath string, sizeBytes int64) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	ct.allocated[capacityKey(node, basePath)] += sizeBytes
+}
+
+// Release subtracts sizeBytes from the tracked allocation for the given key.
+func (ct *CapacityTracker) Release(node, basePath string, sizeBytes int64) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	key := capacityKey(node, basePath)
+	ct.allocated[key] -= sizeBytes
+	if ct.allocated[key] <= 0 {
+		delete(ct.allocated, key)
+	}
+}
+
+// GetAllocated returns the current allocation in bytes for the given key.
+func (ct *CapacityTracker) GetAllocated(node, basePath string) int64 {
+	ct.mu.RLock()
+	defer ct.mu.RUnlock()
+	return ct.allocated[capacityKey(node, basePath)]
+}
+
+// HasCapacity checks whether allocating sizeBytes would stay within maxCapacity.
+// If maxCapacity is nil, there is no limit and it always returns true.
+func (ct *CapacityTracker) HasCapacity(node, basePath string, sizeBytes int64, maxCapacity *resource.Quantity) bool {
+	if maxCapacity == nil {
+		return true
+	}
+	ct.mu.RLock()
+	defer ct.mu.RUnlock()
+	current := ct.allocated[capacityKey(node, basePath)]
+	return current+sizeBytes <= maxCapacity.Value()
+}
+
+// TryAllocate atomically checks capacity and allocates if possible.
+// Returns true if allocation succeeded, false if it would exceed maxCapacity.
+// This avoids the TOCTOU race between a separate HasCapacity + Allocate sequence.
+func (ct *CapacityTracker) TryAllocate(node, basePath string, sizeBytes int64, maxCapacity *resource.Quantity) bool {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	key := capacityKey(node, basePath)
+	if maxCapacity != nil {
+		current := ct.allocated[key]
+		if current+sizeBytes > maxCapacity.Value() {
+			return false
+		}
+	}
+	ct.allocated[key] += sizeBytes
+	return true
+}
+
+// TryResize atomically adjusts allocation from oldBytes to newBytes.
+// For expansion: checks that the delta fits within maxCapacity.
+// For shrink: always succeeds (releases capacity).
+// Returns true if the resize succeeded, false if it would exceed maxCapacity.
+func (ct *CapacityTracker) TryResize(node, basePath string, oldBytes, newBytes int64, maxCapacity *resource.Quantity) bool {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	key := capacityKey(node, basePath)
+	delta := newBytes - oldBytes
+	if delta > 0 && maxCapacity != nil {
+		current := ct.allocated[key]
+		if current+delta > maxCapacity.Value() {
+			return false
+		}
+	}
+	ct.allocated[key] += delta
+	if ct.allocated[key] <= 0 {
+		delete(ct.allocated, key)
+	}
+	return true
+}
+
 type LocalPathProvisioner struct {
 	ctx                context.Context
 	kubeClient         *clientset.Clientset
@@ -70,17 +163,52 @@ type LocalPathProvisioner struct {
 	helperImage        string
 	serviceAccountName string
 
-	config        *Config
-	configData    *ConfigData
-	configFile    string
-	configMapName string
-	configMutex   *sync.RWMutex
-	helperPod     *v1.Pod
+	config          *Config
+	configData      *ConfigData
+	configFile      string
+	configMapName   string
+	configMutex     *sync.RWMutex
+	helperPod       *v1.Pod
+	capacityTracker *CapacityTracker
 }
 
+// PathEntry represents a single path configuration. It supports both plain
+// string paths (for backward compatibility) and object paths with maxCapacity.
+type PathEntry struct {
+	Path        string `json:"path"`
+	MaxCapacity string `json:"maxCapacity,omitempty"`
+}
+
+// NodePathMapData is the JSON representation of node-to-path mappings.
+// Paths can be plain strings or objects with path and maxCapacity fields.
 type NodePathMapData struct {
-	Node  string   `json:"node,omitempty"`
-	Paths []string `json:"paths,omitempty"`
+	Node  string            `json:"node,omitempty"`
+	Paths []json.RawMessage `json:"paths,omitempty"`
+}
+
+// ParsePaths parses the raw JSON path entries into PathEntry objects.
+// Plain strings are converted to PathEntry with no maxCapacity.
+func (n *NodePathMapData) ParsePaths() ([]PathEntry, error) {
+	entries := make([]PathEntry, 0, len(n.Paths))
+	for _, raw := range n.Paths {
+		trimmed := strings.TrimSpace(string(raw))
+		if len(trimmed) > 0 && trimmed[0] == '"' {
+			// Plain string path
+			var s string
+			if err := json.Unmarshal(raw, &s); err != nil {
+				return nil, fmt.Errorf("failed to parse path string: %v", err)
+			}
+			entries = append(entries, PathEntry{Path: s})
+		} else {
+			// Object path with optional maxCapacity
+			var entry PathEntry
+			if err := json.Unmarshal(raw, &entry); err != nil {
+				return nil, fmt.Errorf("failed to parse path object: %v", err)
+			}
+			entries = append(entries, entry)
+		}
+	}
+	return entries, nil
 }
 
 type StorageClassConfigData struct {
@@ -105,8 +233,13 @@ type StorageClassConfig struct {
 	MaxSize              *resource.Quantity
 }
 
+// PathConfig holds runtime configuration for a single path.
+type PathConfig struct {
+	MaxCapacity *resource.Quantity
+}
+
 type NodePathMap struct {
-	Paths map[string]struct{}
+	Paths map[string]*PathConfig
 }
 
 type Config struct {
@@ -128,11 +261,12 @@ func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
 		serviceAccountName: serviceAccountName,
 
 		// config will be updated shortly by p.refreshConfig()
-		config:        nil,
-		configFile:    configFile,
-		configData:    nil,
-		configMapName: configMapName,
-		configMutex:   &sync.RWMutex{},
+		config:          nil,
+		configFile:      configFile,
+		configData:      nil,
+		configMapName:   configMapName,
+		configMutex:     &sync.RWMutex{},
+		capacityTracker: newCapacityTracker(),
 	}
 	var err error
 	p.helperPod, err = loadHelperPodFile(helperPodYaml)
@@ -142,8 +276,43 @@ func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
 	if err := p.refreshConfig(); err != nil {
 		return nil, err
 	}
+	if err := p.initCapacityTracker(); err != nil {
+		logrus.Warnf("failed to initialize capacity tracker from existing PVs: %v", err)
+	}
 	p.watchAndRefreshConfig()
 	return p, nil
+}
+
+// initCapacityTracker scans existing PVs provisioned by this provisioner
+// and populates the capacity tracker so that it survives restarts.
+func (p *LocalPathProvisioner) initCapacityTracker() error {
+	pvList, err := p.kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list PVs: %v", err)
+	}
+	for _, pv := range pvList.Items {
+		if pv.Annotations == nil {
+			continue
+		}
+		node, ok := pv.Annotations[nodeNameAnnotationKey]
+		if !ok {
+			continue
+		}
+		// Extract the base path (parent directory of the volume)
+		var volumePath string
+		if pv.Spec.PersistentVolumeSource.HostPath != nil {
+			volumePath = pv.Spec.PersistentVolumeSource.HostPath.Path
+		} else if pv.Spec.PersistentVolumeSource.Local != nil {
+			volumePath = pv.Spec.PersistentVolumeSource.Local.Path
+		} else {
+			continue
+		}
+		basePath := filepath.Dir(volumePath)
+		storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
+		p.capacityTracker.Allocate(node, basePath, storage.Value())
+		logrus.Debugf("Capacity tracker: loaded PV %v on %v:%v with %v bytes", pv.Name, node, basePath, storage.Value())
+	}
+	return nil
 }
 
 func (p *LocalPathProvisioner) refreshConfig() error {
@@ -219,7 +388,7 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	}()
 }
 
-func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, c *StorageClassConfig) (string, error) {
+func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, c *StorageClassConfig, requestedBytes int64) (string, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
@@ -250,20 +419,31 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, 
 	}
 	// if a particular path was requested by storage class
 	if requestedPath != "" {
-		if _, ok := paths[requestedPath]; !ok {
+		pc, ok := paths[requestedPath]
+		if !ok {
 			return "", fmt.Errorf("config doesn't contain path %v on node %v", requestedPath, node)
+		}
+		if !p.capacityTracker.TryAllocate(node, requestedPath, requestedBytes, pc.MaxCapacity) {
+			return "", fmt.Errorf("path %v on node %v has insufficient capacity (requested %v bytes)", requestedPath, node, requestedBytes)
 		}
 		return requestedPath, nil
 	}
-	// if no particular path was requested, choose a random one
-	i := rand.IntN(len(paths))
-	for p := range paths {
-		if i == 0 {
-			return p, nil
+	// Collect paths with potential capacity, shuffle, then atomically claim one.
+	// TryAllocate ensures no TOCTOU race between the capacity check and allocation.
+	eligible := make([]string, 0, len(paths))
+	for path, pc := range paths {
+		if p.capacityTracker.HasCapacity(node, path, requestedBytes, pc.MaxCapacity) {
+			eligible = append(eligible, path)
 		}
-		i--
 	}
-	return "", fmt.Errorf("failed to select a random path: no path selected from %d candidates", len(paths))
+	rand.Shuffle(len(eligible), func(i, j int) { eligible[i], eligible[j] = eligible[j], eligible[i] })
+	for _, path := range eligible {
+		pc := paths[path]
+		if p.capacityTracker.TryAllocate(node, path, requestedBytes, pc.MaxCapacity) {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("no local path on node %v has sufficient capacity for %v bytes", node, requestedBytes)
 }
 
 func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, error) {
@@ -404,10 +584,23 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 			requestedPath = storageClass.Parameters["nodePath"]
 		}
 	}
-	basePath, err := p.getPathOnNode(nodeName, requestedPath, c)
+	requestedBytes := storage.Value()
+	basePath, err := p.getPathOnNode(nodeName, requestedPath, c, requestedBytes)
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
+	// getPathOnNode already allocated capacity atomically via TryAllocate.
+	// Release on failure; clear the flag on success to keep the allocation.
+	// Note: if the provisioner crashes between PV creation and API server
+	// persistence, this in-memory allocation is lost. initCapacityTracker
+	// rebuilds state from existing PVs on restart, so the window is small
+	// and self-healing.
+	allocated := true
+	defer func() {
+		if allocated {
+			p.capacityTracker.Release(nodeName, basePath, requestedBytes)
+		}
+	}()
 
 	name := opts.PVName
 	folderName := strings.Join([]string{name, opts.PVC.Namespace, opts.PVC.Name}, "_")
@@ -512,6 +705,8 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 			},
 		}
 	}
+	// Provisioning succeeded — keep the allocation
+	allocated = false
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -554,6 +749,10 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 			// Check if node still exists
 			if _, err := p.kubeClient.CoreV1().Nodes().Get(context.TODO(), node, metav1.GetOptions{}); err != nil && k8serror.IsNotFound(err) {
 				logrus.Infof("Node %v does not exist, skipping cleanup of volume %v", node, pv.Name)
+				// Still release capacity even if node is gone
+				storage := pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
+				basePath := filepath.Dir(path)
+				p.capacityTracker.Release(node, basePath, storage.Value())
 				return nil
 			}
 			logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
@@ -575,6 +774,9 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
+		// Release capacity after successful teardown
+		basePath := filepath.Dir(path)
+		p.capacityTracker.Release(node, basePath, storage.Value())
 		return nil
 	}
 	logrus.Infof("Retained volume %v", pv.Name)
@@ -901,9 +1103,15 @@ func canonicalizeStorageClassConfig(data *StorageClassConfigData) (cfg *StorageC
 		if cfg.NodePathMap[n.Node] != nil {
 			return nil, fmt.Errorf("duplicate node %v", n.Node)
 		}
-		npMap := &NodePathMap{Paths: map[string]struct{}{}}
+		npMap := &NodePathMap{Paths: map[string]*PathConfig{}}
 		cfg.NodePathMap[n.Node] = npMap
-		for _, p := range n.Paths {
+
+		pathEntries, err := n.ParsePaths()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse paths for node %v: %v", n.Node, err)
+		}
+		for _, entry := range pathEntries {
+			p := entry.Path
 			if p[0] != '/' {
 				return nil, fmt.Errorf("path must start with / for path %v on node %v", p, n.Node)
 			}
@@ -917,7 +1125,15 @@ func canonicalizeStorageClassConfig(data *StorageClassConfigData) (cfg *StorageC
 			if _, ok := npMap.Paths[path]; ok {
 				return nil, fmt.Errorf("duplicate path %v on node %v", p, n.Node)
 			}
-			npMap.Paths[path] = struct{}{}
+			pc := &PathConfig{}
+			if entry.MaxCapacity != "" {
+				q, err := resource.ParseQuantity(entry.MaxCapacity)
+				if err != nil {
+					return nil, fmt.Errorf("invalid maxCapacity %q for path %v on node %v: %v", entry.MaxCapacity, p, n.Node, err)
+				}
+				pc.MaxCapacity = &q
+			}
+			npMap.Paths[path] = pc
 		}
 	}
 
@@ -988,3 +1204,4 @@ func (p *LocalPathProvisioner) saveHelperPodLogs(pod *v1.Pod) (err error) {
 	logrus.Infof("End of %s logs", pod.Name)
 	return nil
 }
+

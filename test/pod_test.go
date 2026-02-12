@@ -213,6 +213,127 @@ func (p *PodTestSuite) TestSizeValidation() {
 	}
 }
 
+func (p *PodTestSuite) TestCapacityWithinBudget() {
+	p.kustomizeDir = "capacity-accept-within"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
+func (p *PodTestSuite) TestCapacityExhaustion() {
+	p.kustomizeDir = "capacity-exhaustion"
+	p.verifyCapacityExhaustion()
+}
+
+func (p *PodTestSuite) verifyCapacityExhaustion() {
+	kustomizeDir := testdataFile(p.kustomizeDir)
+
+	// Apply all resources (provisioner + SC + config + 2 PVCs + 2 pods)
+	cmds := []string{
+		fmt.Sprintf("kustomize edit set image %s", p.config.IMAGE),
+		fmt.Sprintf("kustomize edit add label %s:%s -f", LabelKey, LabelValue),
+		"kustomize build | kubectl apply -f -",
+	}
+
+	for _, cmd := range cmds {
+		_, err := runCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
+		if err != nil {
+			p.FailNow("", "failed to apply deployment", err)
+		}
+	}
+
+	// Wait for provisioner to be running
+	_, err := runCmd(p.T(),
+		"kubectl wait deployment/local-path-provisioner -n local-path-storage --for condition=available --timeout=60s",
+		kustomizeDir, p.config.envs(), nil)
+	if err != nil {
+		p.FailNow("", "provisioner deployment not available", err)
+	}
+
+	// Wait for at least one PVC to become Bound (up to 120s)
+	timeout := time.After(120 * time.Second)
+	pollTicker := time.NewTicker(3 * time.Second)
+	defer pollTicker.Stop()
+	oneBound := false
+
+	for !oneBound {
+		select {
+		case <-timeout:
+			p.FailNow("", "timed out waiting for at least one PVC to become Bound")
+
+		case <-pollTicker.C:
+			for _, pvcName := range []string{"capacity-pvc-1", "capacity-pvc-2"} {
+				cmd := fmt.Sprintf("kubectl get pvc %s -o jsonpath='{.status.phase}'", pvcName)
+				c := createCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
+				output, err := c.CombinedOutput()
+				if err != nil {
+					p.T().Logf("PVC %s check: %v", pvcName, err)
+					continue
+				}
+				phase := strings.Trim(string(output), "'")
+				p.T().Logf("PVC %s status: %s", pvcName, phase)
+				if phase == "Bound" {
+					oneBound = true
+				}
+			}
+		}
+	}
+
+	// Poll until PVC states stabilize (one Bound, one Pending) for 3 consecutive checks
+	stabilizeTimeout := time.After(60 * time.Second)
+	stabilizeTicker := time.NewTicker(3 * time.Second)
+	defer stabilizeTicker.Stop()
+
+	stableCount := 0
+	var finalBound, finalPending int
+	for stableCount < 3 {
+		select {
+		case <-stabilizeTimeout:
+			p.FailNow("", "timed out waiting for PVC states to stabilize (one Bound, one Pending)")
+		case <-stabilizeTicker.C:
+			bound, pending := 0, 0
+			for _, pvcName := range []string{"capacity-pvc-1", "capacity-pvc-2"} {
+				cmd := fmt.Sprintf("kubectl get pvc %s -o jsonpath='{.status.phase}'", pvcName)
+				c := createCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
+				output, err := c.CombinedOutput()
+				if err != nil {
+					p.T().Logf("PVC %s check error: %v", pvcName, err)
+					continue
+				}
+				phase := strings.Trim(string(output), "'")
+				p.T().Logf("PVC %s status: %s", pvcName, phase)
+				switch phase {
+				case "Bound":
+					bound++
+				case "Pending":
+					pending++
+				}
+			}
+			if bound == 1 && pending == 1 {
+				stableCount++
+				finalBound, finalPending = bound, pending
+			} else {
+				stableCount = 0
+			}
+		}
+	}
+	p.Equal(1, finalBound, "exactly one PVC should be Bound")
+	p.Equal(1, finalPending, "exactly one PVC should remain Pending due to capacity exhaustion")
+
+	// Check provisioner logs for the capacity error
+	logCmd := `kubectl logs -l app=local-path-provisioner -n local-path-storage --tail=100`
+	logC := createCmd(p.T(), logCmd, kustomizeDir, p.config.envs(), nil)
+	logOutput, logErr := logC.CombinedOutput()
+	if logErr != nil {
+		p.T().Logf("Failed to get provisioner logs: %v", logErr)
+	} else {
+		logStr := string(logOutput)
+		p.True(
+			strings.Contains(logStr, "insufficient capacity") || strings.Contains(logStr, "no local path"),
+			"expected capacity error in provisioner logs but none found",
+		)
+	}
+}
+
 func (p *PodTestSuite) TestPathTraversalPrevention() {
 	testCases := []struct {
 		name          string
