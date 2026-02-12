@@ -172,6 +172,47 @@ func (p *PodTestSuite) TestPodWithSkipPathPatternCheckByAnnotation() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+func (p *PodTestSuite) TestSizeValidation() {
+	testCases := []struct {
+		name          string
+		kustomizeDir  string
+		shouldSucceed bool
+		expectedError string
+	}{
+		{
+			name:          "RejectBelowMin",
+			kustomizeDir:  "size-reject-below-min",
+			shouldSucceed: false,
+			expectedError: "below minimum size",
+		},
+		{
+			name:          "RejectAboveMax",
+			kustomizeDir:  "size-reject-above-max",
+			shouldSucceed: false,
+			expectedError: "exceeds maximum size",
+		},
+		{
+			name:          "AcceptWithinBounds",
+			kustomizeDir:  "size-accept-within-bounds",
+			shouldSucceed: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		p.Run(tc.name, func() {
+			p.kustomizeDir = tc.kustomizeDir
+			p.T().Cleanup(func() {
+				_ = deleteKustomizeDeployment(p.T(), p.kustomizeDir, p.config.envs())
+			})
+			if tc.shouldSucceed {
+				runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+			} else {
+				p.verifyProvisioningFailed(tc.expectedError)
+			}
+		})
+	}
+}
+
 func (p *PodTestSuite) TestPathTraversalPrevention() {
 	testCases := []struct {
 		name          string

@@ -20,6 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
@@ -85,6 +86,8 @@ type NodePathMapData struct {
 type StorageClassConfigData struct {
 	NodePathMap          []*NodePathMapData `json:"nodePathMap,omitempty"`
 	SharedFileSystemPath string             `json:"sharedFileSystemPath,omitempty"`
+	MinSize              string             `json:"minSize,omitempty"`
+	MaxSize              string             `json:"maxSize,omitempty"`
 }
 
 type ConfigData struct {
@@ -98,6 +101,8 @@ type ConfigData struct {
 type StorageClassConfig struct {
 	NodePathMap          map[string]*NodePathMap
 	SharedFileSystemPath string
+	MinSize              *resource.Quantity
+	MaxSize              *resource.Quantity
 }
 
 type NodePathMap struct {
@@ -360,6 +365,34 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		}
 	}
 
+	// Validate PVC size against min/max limits.
+	// StorageClass parameters override config values.
+	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	minSize := c.MinSize
+	maxSize := c.MaxSize
+	if storageClass.Parameters != nil {
+		if v, ok := storageClass.Parameters["minSize"]; ok {
+			q, err := resource.ParseQuantity(v)
+			if err != nil {
+				return nil, pvController.ProvisioningFinished, fmt.Errorf("invalid StorageClass parameter minSize %q: %v", v, err)
+			}
+			minSize = &q
+		}
+		if v, ok := storageClass.Parameters["maxSize"]; ok {
+			q, err := resource.ParseQuantity(v)
+			if err != nil {
+				return nil, pvController.ProvisioningFinished, fmt.Errorf("invalid StorageClass parameter maxSize %q: %v", v, err)
+			}
+			maxSize = &q
+		}
+	}
+	if minSize != nil && storage.Cmp(*minSize) < 0 {
+		return nil, pvController.ProvisioningFinished, fmt.Errorf("PVC requests %v which is below minimum size %v", storage.String(), minSize.String())
+	}
+	if maxSize != nil && storage.Cmp(*maxSize) > 0 {
+		return nil, pvController.ProvisioningFinished, fmt.Errorf("PVC requests %v which exceeds maximum size %v", storage.String(), maxSize.String())
+	}
+
 	nodeName := ""
 	if node != nil {
 		// This clause works only with sharedFS
@@ -418,7 +451,6 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		logrus.Infof("Creating volume %v at %v:%v", name, nodeName, path)
 	}
 
-	storage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	provisionCmd := make([]string, 0, 2)
 	if p.config.SetupCommand == "" {
 		provisionCmd = append(provisionCmd, "/bin/sh", "/script/setup")
@@ -490,7 +522,7 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 			AccessModes:                   pvc.Spec.AccessModes,
 			VolumeMode:                    &fs,
 			Capacity: v1.ResourceList{
-				v1.ResourceStorage: pvc.Spec.Resources.Requests[v1.ResourceStorage],
+				v1.ResourceStorage: storage,
 			},
 			PersistentVolumeSource: pvs,
 			NodeAffinity:           nodeAffinity,
@@ -844,6 +876,26 @@ func canonicalizeStorageClassConfig(data *StorageClassConfigData) (cfg *StorageC
 	}()
 	cfg = &StorageClassConfig{}
 	cfg.SharedFileSystemPath = data.SharedFileSystemPath
+
+	// Parse minSize/maxSize
+	if data.MinSize != "" {
+		q, err := resource.ParseQuantity(data.MinSize)
+		if err != nil {
+			return nil, fmt.Errorf("invalid minSize %q: %v", data.MinSize, err)
+		}
+		cfg.MinSize = &q
+	}
+	if data.MaxSize != "" {
+		q, err := resource.ParseQuantity(data.MaxSize)
+		if err != nil {
+			return nil, fmt.Errorf("invalid maxSize %q: %v", data.MaxSize, err)
+		}
+		cfg.MaxSize = &q
+	}
+	if cfg.MinSize != nil && cfg.MaxSize != nil && cfg.MinSize.Cmp(*cfg.MaxSize) > 0 {
+		return nil, fmt.Errorf("minSize %v must not exceed maxSize %v", cfg.MinSize, cfg.MaxSize)
+	}
+
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
 		if cfg.NodePathMap[n.Node] != nil {
