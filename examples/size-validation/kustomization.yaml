@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../deploy
+- storage-class.yaml
+- pvc.yaml
+
+patches:
+- target:
+    kind: ConfigMap
+    name: local-path-config
+  patch: |-
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: local-path-config
+      namespace: local-path-storage
+    data:
+      config.json: |-
+        {
+          "nodePathMap": [
+            {
+              "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+              "paths": ["/opt/local-path-provisioner"]
+            }
+          ],
+          "storageClassConfigs": {
+            "local-path": {},
+            "local-path-bounded": {
+              "minSize": "1Gi",
+              "maxSize": "50Gi",
+              "nodePathMap": [
+                {
+                  "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                  "paths": ["/opt/local-path-provisioner"]
+                }
+              ]
+            }
+          }
+        }

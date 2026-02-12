@@ -1,0 +1,93 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../deploy
+- storage-class.yaml
+- pvc.yaml
+
+patches:
+- target:
+    kind: ConfigMap
+    name: local-path-config
+  patch: |-
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: local-path-config
+      namespace: local-path-storage
+    data:
+      config.json: |-
+        {
+          "nodePathMap": [
+            {
+              "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+              "paths": ["/mnt/data"]
+            }
+          ],
+          "storageClassConfigs": {
+            "local-path": {},
+            "local-path-xfs-quota": {
+              "nodePathMap": [
+                {
+                  "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                  "paths": ["/mnt/data"]
+                }
+              ]
+            }
+          }
+        }
+      setup: |-
+        #!/bin/sh
+        set -eu
+        exec /opt/local-path-provisioner/setup
+      teardown: |-
+        #!/bin/sh
+        set -eu
+        exec /opt/local-path-provisioner/teardown
+      resize: |-
+        #!/bin/sh
+        set -eu
+        exec /opt/local-path-provisioner/resize "$@"
+      helperPod.yaml: |-
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: helper-pod
+        spec:
+          priorityClassName: system-node-critical
+          tolerations:
+            - key: node.kubernetes.io/disk-pressure
+              operator: Exists
+              effect: NoSchedule
+          containers:
+          - name: helper-pod
+            image: rancher/local-path-quota-helper:v0.0.34
+            imagePullPolicy: IfNotPresent
+            securityContext:
+              privileged: true
+            volumeMounts:
+            - name: quota-projects
+              mountPath: /etc/projects
+            - name: quota-projid
+              mountPath: /etc/projid
+            - name: device-dir
+              mountPath: /dev
+            - name: lock-dir
+              mountPath: /var/lock
+          volumes:
+          - name: quota-projects
+            hostPath:
+              path: /etc/projects
+              type: FileOrCreate
+          - name: quota-projid
+            hostPath:
+              path: /etc/projid
+              type: FileOrCreate
+          - name: device-dir
+            hostPath:
+              path: /dev
+          - name: lock-dir
+            hostPath:
+              path: /var/lock
+              type: DirectoryOrCreate
