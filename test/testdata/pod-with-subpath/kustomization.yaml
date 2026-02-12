@@ -10,3 +10,5 @@ labels:
 - includeSelectors: true
   pairs:
     app: local-path-provisioner
+commonLabels:
+  app: local-path-provisioner

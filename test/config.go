@@ -12,7 +12,8 @@ const (
 
 //nolint:unused
 type testConfig struct {
-	IMAGE string
+	IMAGE             string
+	QUOTA_HELPER_IMAGE string `envconfig:"QUOTA_HELPER_IMAGE"`
 }
 
 //nolint:unused
@@ -33,4 +34,12 @@ func testEnvs(config interface{}) []string {
 	}
 
 	return envs
+}
+
+// quotaConfig holds configuration for quota e2e tests.
+//
+//nolint:unused
+type quotaConfig struct {
+	ProvisionerImage string `envconfig:"PROVISIONER_IMAGE" required:"true"`
+	QuotaHelperImage string `envconfig:"QUOTA_HELPER_IMAGE" required:"true"`
 }

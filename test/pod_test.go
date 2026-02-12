@@ -3,12 +3,7 @@
 package test
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +38,9 @@ func (p *PodTestSuite) SetupSuite() {
 	cmds := []string{
 		fmt.Sprintf("kind create cluster --config=%s --wait=120s", testdataFile("kind-cluster.yaml")),
 		fmt.Sprintf("kind load docker-image %s", p.config.IMAGE),
+	}
+	if p.config.QUOTA_HELPER_IMAGE != "" {
+		cmds = append(cmds, fmt.Sprintf("kind load docker-image %s", p.config.QUOTA_HELPER_IMAGE))
 	}
 	for _, cmd := range cmds {
 		_, err = runCmd(
@@ -121,11 +119,12 @@ func (p *PodTestSuite) TestPodWithSecurityContext() {
 
 	cmd := fmt.Sprintf(`kubectl get pod -l %s=%s -o=jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].reason}'`, LabelKey, LabelValue)
 
-	t := time.Tick(5 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 loop:
 	for {
 		select {
-		case <-t:
+		case <-ticker.C:
 			c := createCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
 			output, err := c.CombinedOutput()
 			if err != nil {
@@ -173,7 +172,6 @@ func (p *PodTestSuite) TestPodWithSkipPathPatternCheckByAnnotation() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
-// ADD THIS NEW TEST METHOD
 func (p *PodTestSuite) TestPathTraversalPrevention() {
 	testCases := []struct {
 		name          string
@@ -221,7 +219,8 @@ func (p *PodTestSuite) verifyProvisioningFailed(expectedError string) {
 	checkPVCCmd := fmt.Sprintf("kubectl get pvc -l %s=%s -o jsonpath='{.items[0].status.phase}'", LabelKey, LabelValue)
 
 	timeout := time.After(30 * time.Second)
-	tick := time.Tick(2 * time.Second)
+	failTicker := time.NewTicker(2 * time.Second)
+	defer failTicker.Stop()
 
 	for {
 		select {
@@ -230,7 +229,7 @@ func (p *PodTestSuite) verifyProvisioningFailed(expectedError string) {
 			p.T().Log("PVC correctly remained in Pending state due to security validation")
 			return
 
-		case <-tick:
+		case <-failTicker.C:
 			c := createCmd(p.T(), checkPVCCmd, kustomizeDir, p.config.envs(), nil)
 			output, err := c.CombinedOutput()
 			if err != nil {
@@ -302,21 +301,6 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 	}
 }
 
-func testdataFile(fields ...string) string {
-	return filepath.Join("testdata", filepath.Join(fields...))
-}
-
-func deleteKustomizeDeployment(t *testing.T, kustomizeDir string, envs []string) error {
-	_, err := runCmd(
-		t,
-		"kustomize build | kubectl delete --timeout=180s -f -",
-		testdataFile(kustomizeDir),
-		envs,
-		nil,
-	)
-	return err
-}
-
 func deleteCluster(t *testing.T, envs []string) error {
 	_, err := runCmd(
 		t,
@@ -326,50 +310,4 @@ func deleteCluster(t *testing.T, envs []string) error {
 		nil,
 	)
 	return err
-}
-
-func createCmd(t *testing.T, cmd, kustomizeDir string, envs []string, callback func(*exec.Cmd)) *exec.Cmd {
-	t.Logf("creating command: %s", cmd)
-	c := exec.Command("bash", "-c", cmd)
-	c.Env = append(os.Environ(), envs...)
-	c.Dir = kustomizeDir
-
-	if callback != nil {
-		callback(c)
-	}
-
-	return c
-}
-
-func runCmd(t *testing.T, cmd, kustomizeDir string, envs []string, callback func(*exec.Cmd)) (*exec.Cmd, error) {
-	t.Logf("running command: %s", cmd)
-
-	c := createCmd(t, cmd, kustomizeDir, envs, callback)
-	stdout, _ := c.StdoutPipe()
-	stderr, _ := c.StderrPipe()
-
-	err := c.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	stopCh := make(chan struct{})
-	go func() {
-		mergedReader := io.MultiReader(stderr, stdout)
-		scanner := bufio.NewScanner(mergedReader)
-		scanner.Split(bufio.ScanLines)
-		for scanner.Scan() {
-			t.Log(scanner.Text())
-		}
-
-		close(stopCh)
-	}()
-
-	<-stopCh
-	err = c.Wait()
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
 }

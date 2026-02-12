@@ -4,9 +4,13 @@ resources:
 - ../../../deploy
 - ../../../examples/pod
 images:
+- name: local-path-provisioner
+  newTag: dev
 - name: rancher/local-path-provisioner
   newTag: dev
 labels:
 - includeSelectors: true
   pairs:
     app: local-path-provisioner
+commonLabels:
+  app: local-path-provisioner
