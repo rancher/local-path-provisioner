@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: quota-enforce-writer
+spec:
+  containers:
+  - name: writer
+    image: busybox:1.37.0
+    imagePullPolicy: IfNotPresent
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: quota-enforce-pvc
