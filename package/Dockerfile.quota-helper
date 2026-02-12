@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1.7.0
+
+FROM debian:bookworm-slim
+
+ARG TARGETPLATFORM
+RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
+    echo "Error: Unsupported TARGETPLATFORM for quota-helper: $TARGETPLATFORM" && \
+    exit 1; \
+    fi
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xfsprogs coreutils util-linux && rm -rf /var/lib/apt/lists/*
+
+COPY package/quota-helper/setup package/quota-helper/teardown package/quota-helper/resize /opt/local-path-provisioner/
+RUN chmod +x /opt/local-path-provisioner/*

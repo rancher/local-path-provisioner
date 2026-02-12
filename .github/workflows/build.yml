@@ -101,3 +101,24 @@ jobs:
         platforms: linux/amd64,linux/arm64,linux/arm,linux/riscv64,linux/s390x
         tags: rancher/local-path-provisioner:${{ github.ref_name }}
         file: package/Dockerfile
+
+    # rancher/local-path-quota-helper image (XFS quota enforcement)
+    - name: docker-publish-quota-helper
+      if: ${{ startsWith(github.ref, 'refs/heads/') }}
+      uses: docker/build-push-action@v5
+      with:
+        context: ./
+        push: true
+        platforms: linux/amd64,linux/arm64
+        tags: rancher/local-path-quota-helper:${{ env.branch }}-head
+        file: package/Dockerfile.quota-helper
+
+    - name: docker-publish-quota-helper-with-tag
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      uses: docker/build-push-action@v5
+      with:
+        context: ./
+        push: true
+        platforms: linux/amd64,linux/arm64
+        tags: rancher/local-path-quota-helper:${{ github.ref_name }}
+        file: package/Dockerfile.quota-helper

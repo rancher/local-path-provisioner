@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+
+# Env vars from provisioner: VOL_DIR, VOL_QUOTA_TYPE
+quotaType="${VOL_QUOTA_TYPE:-none}"
+parentDir=$(dirname "$VOL_DIR")
+pvcName=$(basename "$VOL_DIR")
+
+# Auto-detect if needed
+if [ "$quotaType" = "auto" ]; then
+    fsType=$(stat -f -c '%T' "$parentDir" 2>/dev/null || echo "unknown")
+    case "$fsType" in
+        xfs)  quotaType="xfs" ;;
+        *)    quotaType="none" ;;
+    esac
+fi
+
+# 1. Remove quota limits
+case "$quotaType" in
+    xfs)
+        echo "Removing XFS project quota for ${pvcName}"
+        xfs_quota -x -c "limit -p bhard=0 ${pvcName}" "$parentDir" 2>/dev/null || true
+        ;;
+    none|"")
+        echo "No quota to remove"
+        ;;
+esac
+
+# 2. Remove directory
+rm -rf "$VOL_DIR"
+
+# 3. Clean up /etc/projects + /etc/projid under flock
+if [ "$quotaType" != "none" ] && [ -n "$quotaType" ]; then
+    LOCKFILE="/var/lock/local-path-quota.lock"
+    (
+        flock -x 9
+        echo "Cleaning up /etc/projects and /etc/projid for ${pvcName}"
+        # Use grep -v + temp file instead of sed -i (sed -i needs write access to /etc/ for temp file)
+        grep -v "${pvcName}" /etc/projid > /tmp/.projid_clean 2>/dev/null || true
+        cat /tmp/.projid_clean > /etc/projid 2>/dev/null || true
+        rm -f /tmp/.projid_clean
+        grep -v "${VOL_DIR}" /etc/projects > /tmp/.projects_clean 2>/dev/null || true
+        cat /tmp/.projects_clean > /etc/projects 2>/dev/null || true
+        rm -f /tmp/.projects_clean
+    ) 9>"$LOCKFILE"
+fi
+
+echo "Teardown complete for ${VOL_DIR}"

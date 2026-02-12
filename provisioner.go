@@ -654,6 +654,11 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		logrus.Infof("Creating volume %v at %v:%v", name, nodeName, path)
 	}
 
+	var quotaType string
+	if storageClass.Parameters != nil {
+		quotaType = storageClass.Parameters["quotaEnforcement"]
+	}
+
 	provisionCmd := make([]string, 0, 2)
 	if p.config.SetupCommand == "" {
 		provisionCmd = append(provisionCmd, "/bin/sh", "/script/setup")
@@ -666,6 +671,7 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		Mode:        *pvc.Spec.VolumeMode,
 		SizeInBytes: storage.Value(),
 		Node:        nodeName,
+		QuotaType:   quotaType,
 	}, c); err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
@@ -717,10 +723,14 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 	}
 	// Provisioning succeeded — keep the allocation
 	allocated = false
+	pvAnnotations := map[string]string{nodeNameAnnotationKey: nodeName}
+	if quotaType != "" {
+		pvAnnotations[quotaTypeAnnotationKey] = quotaType
+	}
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
-			Annotations: map[string]string{nodeNameAnnotationKey: nodeName},
+			Annotations: pvAnnotations,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: *opts.StorageClass.ReclaimPolicy,
@@ -774,12 +784,17 @@ func (p *LocalPathProvisioner) deleteFor(pv *v1.PersistentVolume, c *StorageClas
 		} else {
 			cleanupCmd = append(cleanupCmd, p.config.TeardownCommand)
 		}
+		var deleteQuotaType string
+		if pv.Annotations != nil {
+			deleteQuotaType = pv.Annotations[quotaTypeAnnotationKey]
+		}
 		if err := p.createHelperPod(ActionTypeDelete, cleanupCmd, volumeOptions{
 			Name:        pv.Name,
 			Path:        path,
 			Mode:        *pv.Spec.VolumeMode,
 			SizeInBytes: storage.Value(),
 			Node:        node,
+			QuotaType:   deleteQuotaType,
 		}, c); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err

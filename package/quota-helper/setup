@@ -1,0 +1,108 @@
+#!/bin/sh
+set -eu
+
+# Env vars from provisioner: VOL_DIR, VOL_SIZE_BYTES, VOL_QUOTA_TYPE
+quotaType="${VOL_QUOTA_TYPE:-none}"
+parentDir=$(dirname "$VOL_DIR")
+pvcName=$(basename "$VOL_DIR")
+
+# 1. Always create the directory
+mkdir -m 0777 -p "$VOL_DIR"
+
+# 2. If no quota, done
+if [ "$quotaType" = "none" ] || [ -z "$quotaType" ]; then
+    echo "No quota enforcement requested, directory created."
+    exit 0
+fi
+
+# 3. Auto-detect filesystem if needed
+if [ "$quotaType" = "auto" ]; then
+    fsType=$(stat -f -c '%T' "$parentDir" 2>/dev/null || echo "unknown")
+    echo "Detected filesystem type: $fsType"
+    case "$fsType" in
+        xfs)  quotaType="xfs" ;;
+        *)    echo "ERROR: unsupported filesystem for quota: $fsType (only XFS is supported)"; exit 1 ;;
+    esac
+    echo "Auto-detected quota type: $quotaType"
+fi
+
+# Validate quota type
+if [ "$quotaType" != "xfs" ]; then
+    echo "ERROR: Unsupported quota type: $quotaType (only 'xfs' is supported)"
+    exit 1
+fi
+
+# 4. Prerequisite checks for XFS quota
+if ! command -v xfs_quota >/dev/null 2>&1; then
+    echo "ERROR: xfs_quota binary not found. Install xfsprogs package."
+    exit 1
+fi
+
+# Verify filesystem is mounted with prjquota option
+mountPoint=""
+longestMatch=0
+while IFS=' ' read -r _ mp _ opts _; do
+    case "$parentDir" in
+        "$mp"*|"$mp")
+            mpLen=${#mp}
+            if [ "$mpLen" -gt "$longestMatch" ]; then
+                longestMatch=$mpLen
+                mountPoint=$mp
+                mountOpts=$opts
+            fi
+            ;;
+    esac
+done < /proc/mounts
+if [ -z "$mountPoint" ]; then
+    echo "ERROR: Could not determine mount point for $parentDir"
+    exit 1
+fi
+case ",$mountOpts," in
+    *,prjquota,*) ;; # OK
+    *)
+        echo "ERROR: Filesystem at $mountPoint is not mounted with prjquota option (current options: $mountOpts). Remount with: mount -o remount,prjquota $mountPoint"
+        exit 1
+        ;;
+esac
+
+# Verify /etc/projects and /etc/projid are writable
+if [ ! -w /etc/projects ]; then
+    echo "ERROR: /etc/projects is not writable. Ensure file exists and is mounted read-write."
+    exit 1
+fi
+if [ ! -w /etc/projid ]; then
+    echo "ERROR: /etc/projid is not writable. Ensure file exists and is mounted read-write."
+    exit 1
+fi
+
+# 5. Assign project ID under flock
+LOCKFILE="/var/lock/local-path-quota.lock"
+(
+    flock -x 9
+
+    # Find max existing ID, start at 10000
+    maxId=$(awk -F: '{print $2}' /etc/projid 2>/dev/null | sort -n | tail -1)
+    if [ -z "$maxId" ] || [ "$maxId" -lt 10000 ]; then
+        projectId=10000
+    else
+        projectId=$((maxId + 1))
+    fi
+
+    echo "${projectId}:${VOL_DIR}" >> /etc/projects
+    echo "${pvcName}:${projectId}" >> /etc/projid
+
+    # Write ID to temp file so outer scope can read it
+    echo "$projectId" > /tmp/.quota_project_id
+
+    echo "Registered project ${pvcName} with ID ${projectId} for path ${VOL_DIR}"
+) 9>"$LOCKFILE"
+
+projectId=$(cat /tmp/.quota_project_id)
+
+# 6. Apply XFS project quota
+echo "Applying XFS project quota: bhard=${VOL_SIZE_BYTES} bytes"
+xfs_quota -x -c "project -s ${pvcName}" "$parentDir"
+xfs_quota -x -c "limit -p bhard=${VOL_SIZE_BYTES} ${pvcName}" "$parentDir"
+xfs_quota -x -c "report -pbih" "$parentDir"
+
+echo "Quota setup complete for ${VOL_DIR}"
