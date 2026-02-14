@@ -28,8 +28,14 @@ metadata:
   name: local-path-provisioner-role
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "persistentvolumeclaims", "configmaps", "pods", "pods/log"]
+    resources: ["nodes", "configmaps", "pods", "pods/log"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims/status"]
+    verbs: ["update", "patch"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
@@ -119,6 +125,7 @@ metadata:
 provisioner: rancher.io/local-path
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
+allowVolumeExpansion: true
 
 ---
 kind: ConfigMap
@@ -144,6 +151,17 @@ data:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
+  resize: |-
+    #!/bin/sh
+    set -eu
+    action="${1:-resize}"
+    if [ "$action" = "check-usage" ]; then
+        usage=$(du -sb "$VOL_DIR" 2>/dev/null | awk '{print $1}')
+        [ -z "$usage" ] && usage=0
+        echo "USAGE_BYTES=$usage"
+        exit 0
+    fi
+    echo "No quota enforcement, resize is a metadata-only operation."
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod

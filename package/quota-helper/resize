@@ -1,0 +1,87 @@
+#!/bin/sh
+set -eu
+
+# Resize helper script for local-path-provisioner.
+# Two modes:
+#   resize (default) — update XFS project quota to new VOL_SIZE_BYTES
+#   check-usage      — report actual disk usage of VOL_DIR as USAGE_BYTES=N
+#
+# Env vars from provisioner: VOL_DIR, VOL_SIZE_BYTES, VOL_QUOTA_TYPE
+
+action="${1:-resize}"
+
+if [ "$action" = "check-usage" ]; then
+    # Report actual disk usage in bytes
+    usage=$(du -sb "$VOL_DIR" 2>/dev/null | awk '{print $1}')
+    if [ -z "$usage" ]; then
+        usage=0
+    fi
+    echo "USAGE_BYTES=$usage"
+    exit 0
+fi
+
+# --- Resize mode: update quota ---
+quotaType="${VOL_QUOTA_TYPE:-none}"
+parentDir=$(dirname "$VOL_DIR")
+pvcName=$(basename "$VOL_DIR")
+
+if [ "$quotaType" = "none" ] || [ -z "$quotaType" ]; then
+    echo "No quota enforcement, resize is a metadata-only operation."
+    exit 0
+fi
+
+# Auto-detect filesystem if needed
+if [ "$quotaType" = "auto" ]; then
+    fsType=$(stat -f -c '%T' "$parentDir" 2>/dev/null || echo "unknown")
+    case "$fsType" in
+        xfs)  quotaType="xfs" ;;
+        *)    echo "ERROR: unsupported filesystem for quota: $fsType (only XFS is supported)"; exit 1 ;;
+    esac
+fi
+
+# Validate quota type
+if [ "$quotaType" != "xfs" ]; then
+    echo "ERROR: Unsupported quota type: $quotaType (only 'xfs' is supported)"
+    exit 1
+fi
+
+# Prerequisite checks for XFS quota
+if ! command -v xfs_quota >/dev/null 2>&1; then
+    echo "ERROR: xfs_quota binary not found. Install xfsprogs package."
+    exit 1
+fi
+
+# Verify filesystem is mounted with prjquota option
+mountPoint=""
+longestMatch=0
+while IFS=' ' read -r _ mp _ opts _; do
+    case "$parentDir" in
+        "$mp"*|"$mp")
+            mpLen=${#mp}
+            if [ "$mpLen" -gt "$longestMatch" ]; then
+                longestMatch=$mpLen
+                mountPoint=$mp
+                mountOpts=$opts
+            fi
+            ;;
+    esac
+done < /proc/mounts
+if [ -z "$mountPoint" ]; then
+    echo "ERROR: Could not determine mount point for $parentDir"
+    exit 1
+fi
+case ",$mountOpts," in
+    *,prjquota,*) ;; # OK
+    *)
+        echo "ERROR: Filesystem at $mountPoint is not mounted with prjquota option (current options: $mountOpts). Remount with: mount -o remount,prjquota $mountPoint"
+        exit 1
+        ;;
+esac
+
+# Update XFS project quota to new size
+# Note: project ID and /etc/projects + /etc/projid entries already exist from setup
+echo "Updating XFS project quota: bhard=${VOL_SIZE_BYTES} bytes for ${pvcName}"
+xfs_quota -x -c "limit -p bhard=${VOL_SIZE_BYTES} ${pvcName}" "$parentDir"
+xfs_quota -x -c "report -pbih" "$parentDir"
+
+echo "Resize complete for ${VOL_DIR}"

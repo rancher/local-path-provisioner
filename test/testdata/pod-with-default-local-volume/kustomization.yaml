@@ -6,9 +6,13 @@ resources:
 patches:
 - path: patch.yaml
 images:
+- name: local-path-provisioner
+  newTag: dev
 - name: rancher/local-path-provisioner
   newTag: dev
 labels:
 - includeSelectors: true
   pairs:
     app: local-path-provisioner
+commonLabels:
+  app: local-path-provisioner

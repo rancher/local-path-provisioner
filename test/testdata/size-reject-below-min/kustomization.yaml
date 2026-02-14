@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../../deploy
+- storage-class.yaml
+- pvc.yaml
+- pod.yaml
+images:
+- name: rancher/local-path-provisioner
+  newTag: dev
+labels:
+- includeSelectors: true
+  pairs:
+    app: local-path-provisioner
+patches:
+- path: local-path-config.yaml
+commonLabels:
+  app: local-path-provisioner

@@ -1,0 +1,21 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+data:
+  config.json: |-
+    {
+            "storageClassConfigs":{
+                   "local-path-size-limited": {
+                          "minSize": "1Gi",
+                          "maxSize": "50Gi",
+                          "nodePathMap": [
+                          {
+                                  "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                                  "paths":["/opt/local-path-provisioner"]
+                          }
+                          ]
+                   }
+            }
+    }

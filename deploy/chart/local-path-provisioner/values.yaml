@@ -176,6 +176,17 @@ configmap:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
+  resize: |-
+    #!/bin/sh
+    set -eu
+    action="${1:-resize}"
+    if [ "$action" = "check-usage" ]; then
+        usage=$(du -sb "$VOL_DIR" 2>/dev/null | awk '{print $1}')
+        [ -z "$usage" ] && usage=0
+        echo "USAGE_BYTES=$usage"
+        exit 0
+    fi
+    echo "No quota enforcement, resize is a metadata-only operation."
   helperPod:
     # Allows to run the helper pod in another namespace. Uses release namespace by default.
     namespaceOverride: ""

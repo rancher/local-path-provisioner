@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-test-1
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: kind-worker
+  containers:
+  - name: volume-test
+    image: nginx:stable-alpine
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+    - name: volv
+      mountPath: /data
+    ports:
+    - containerPort: 80
+  volumes:
+  - name: volv
+    persistentVolumeClaim:
+      claimName: capacity-pvc-1
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-test-2
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: kind-worker
+  containers:
+  - name: volume-test
+    image: nginx:stable-alpine
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+    - name: volv
+      mountPath: /data
+    ports:
+    - containerPort: 80
+  volumes:
+  - name: volv
+    persistentVolumeClaim:
+      claimName: capacity-pvc-2

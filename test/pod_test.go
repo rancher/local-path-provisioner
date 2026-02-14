@@ -3,12 +3,7 @@
 package test
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +38,9 @@ func (p *PodTestSuite) SetupSuite() {
 	cmds := []string{
 		fmt.Sprintf("kind create cluster --config=%s --wait=120s", testdataFile("kind-cluster.yaml")),
 		fmt.Sprintf("kind load docker-image %s", p.config.IMAGE),
+	}
+	if p.config.QUOTA_HELPER_IMAGE != "" {
+		cmds = append(cmds, fmt.Sprintf("kind load docker-image %s", p.config.QUOTA_HELPER_IMAGE))
 	}
 	for _, cmd := range cmds {
 		_, err = runCmd(
@@ -121,11 +119,12 @@ func (p *PodTestSuite) TestPodWithSecurityContext() {
 
 	cmd := fmt.Sprintf(`kubectl get pod -l %s=%s -o=jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].reason}'`, LabelKey, LabelValue)
 
-	t := time.Tick(5 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 loop:
 	for {
 		select {
-		case <-t:
+		case <-ticker.C:
 			c := createCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
 			output, err := c.CombinedOutput()
 			if err != nil {
@@ -173,7 +172,173 @@ func (p *PodTestSuite) TestPodWithSkipPathPatternCheckByAnnotation() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
-// ADD THIS NEW TEST METHOD
+func (p *PodTestSuite) TestSizeValidation() {
+	testCases := []struct {
+		name          string
+		kustomizeDir  string
+		shouldSucceed bool
+		expectedError string
+	}{
+		{
+			name:          "RejectBelowMin",
+			kustomizeDir:  "size-reject-below-min",
+			shouldSucceed: false,
+			expectedError: "below minimum size",
+		},
+		{
+			name:          "RejectAboveMax",
+			kustomizeDir:  "size-reject-above-max",
+			shouldSucceed: false,
+			expectedError: "exceeds maximum size",
+		},
+		{
+			name:          "AcceptWithinBounds",
+			kustomizeDir:  "size-accept-within-bounds",
+			shouldSucceed: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		p.Run(tc.name, func() {
+			p.kustomizeDir = tc.kustomizeDir
+			p.T().Cleanup(func() {
+				_ = deleteKustomizeDeployment(p.T(), p.kustomizeDir, p.config.envs())
+			})
+			if tc.shouldSucceed {
+				runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+			} else {
+				p.verifyProvisioningFailed(tc.expectedError)
+			}
+		})
+	}
+}
+
+func (p *PodTestSuite) TestCapacityWithinBudget() {
+	p.kustomizeDir = "capacity-accept-within"
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+}
+
+func (p *PodTestSuite) TestCapacityExhaustion() {
+	p.kustomizeDir = "capacity-exhaustion"
+	p.verifyCapacityExhaustion()
+}
+
+func (p *PodTestSuite) verifyCapacityExhaustion() {
+	kustomizeDir := testdataFile(p.kustomizeDir)
+
+	// Apply all resources (provisioner + SC + config + 2 PVCs + 2 pods)
+	cmds := []string{
+		fmt.Sprintf("kustomize edit set image %s", p.config.IMAGE),
+		fmt.Sprintf("kustomize edit add label %s:%s -f", LabelKey, LabelValue),
+		"kustomize build | kubectl apply -f -",
+	}
+
+	for _, cmd := range cmds {
+		_, err := runCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
+		if err != nil {
+			p.FailNow("", "failed to apply deployment", err)
+		}
+	}
+
+	// Wait for provisioner to be running
+	_, err := runCmd(p.T(),
+		"kubectl wait deployment/local-path-provisioner -n local-path-storage --for condition=available --timeout=60s",
+		kustomizeDir, p.config.envs(), nil)
+	if err != nil {
+		p.FailNow("", "provisioner deployment not available", err)
+	}
+
+	// Wait for at least one PVC to become Bound (up to 120s)
+	timeout := time.After(120 * time.Second)
+	pollTicker := time.NewTicker(3 * time.Second)
+	defer pollTicker.Stop()
+	oneBound := false
+
+	for !oneBound {
+		select {
+		case <-timeout:
+			p.FailNow("", "timed out waiting for at least one PVC to become Bound")
+
+		case <-pollTicker.C:
+			for _, pvcName := range []string{"capacity-pvc-1", "capacity-pvc-2"} {
+				cmd := fmt.Sprintf("kubectl get pvc %s -o jsonpath='{.status.phase}'", pvcName)
+				c := createCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
+				output, err := c.CombinedOutput()
+				if err != nil {
+					p.T().Logf("PVC %s check: %v", pvcName, err)
+					continue
+				}
+				phase := strings.Trim(string(output), "'")
+				p.T().Logf("PVC %s status: %s", pvcName, phase)
+				if phase == "Bound" {
+					oneBound = true
+				}
+			}
+		}
+	}
+
+	// Poll until PVC states stabilize (one Bound, one Pending) for 3 consecutive checks
+	stabilizeTimeout := time.After(60 * time.Second)
+	stabilizeTicker := time.NewTicker(3 * time.Second)
+	defer stabilizeTicker.Stop()
+
+	stableCount := 0
+	var finalBound, finalPending int
+	for stableCount < 3 {
+		select {
+		case <-stabilizeTimeout:
+			p.FailNow("", "timed out waiting for PVC states to stabilize (one Bound, one Pending)")
+		case <-stabilizeTicker.C:
+			bound, pending := 0, 0
+			for _, pvcName := range []string{"capacity-pvc-1", "capacity-pvc-2"} {
+				cmd := fmt.Sprintf("kubectl get pvc %s -o jsonpath='{.status.phase}'", pvcName)
+				c := createCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil)
+				output, err := c.CombinedOutput()
+				if err != nil {
+					p.T().Logf("PVC %s check error: %v", pvcName, err)
+					continue
+				}
+				phase := strings.Trim(string(output), "'")
+				p.T().Logf("PVC %s status: %s", pvcName, phase)
+				switch phase {
+				case "Bound":
+					bound++
+				case "Pending":
+					pending++
+				}
+			}
+			if bound == 1 && pending == 1 {
+				stableCount++
+				finalBound, finalPending = bound, pending
+			} else {
+				stableCount = 0
+			}
+		}
+	}
+	p.Equal(1, finalBound, "exactly one PVC should be Bound")
+	p.Equal(1, finalPending, "exactly one PVC should remain Pending due to capacity exhaustion")
+
+	// Check provisioner logs for the capacity error
+	logCmd := `kubectl logs -l app=local-path-provisioner -n local-path-storage --tail=100`
+	logC := createCmd(p.T(), logCmd, kustomizeDir, p.config.envs(), nil)
+	logOutput, logErr := logC.CombinedOutput()
+	if logErr != nil {
+		p.T().Logf("Failed to get provisioner logs: %v", logErr)
+	} else {
+		logStr := string(logOutput)
+		p.True(
+			strings.Contains(logStr, "insufficient capacity") || strings.Contains(logStr, "no local path"),
+			"expected capacity error in provisioner logs but none found",
+		)
+	}
+}
+
+func (p *PodTestSuite) TestQuotaOnUnsupportedFilesystem() {
+	p.kustomizeDir = "quota-unsupported-fs"
+	p.verifyProvisioningFailed("unsupported filesystem")
+}
+
 func (p *PodTestSuite) TestPathTraversalPrevention() {
 	testCases := []struct {
 		name          string
@@ -221,7 +386,8 @@ func (p *PodTestSuite) verifyProvisioningFailed(expectedError string) {
 	checkPVCCmd := fmt.Sprintf("kubectl get pvc -l %s=%s -o jsonpath='{.items[0].status.phase}'", LabelKey, LabelValue)
 
 	timeout := time.After(30 * time.Second)
-	tick := time.Tick(2 * time.Second)
+	failTicker := time.NewTicker(2 * time.Second)
+	defer failTicker.Stop()
 
 	for {
 		select {
@@ -230,7 +396,7 @@ func (p *PodTestSuite) verifyProvisioningFailed(expectedError string) {
 			p.T().Log("PVC correctly remained in Pending state due to security validation")
 			return
 
-		case <-tick:
+		case <-failTicker.C:
 			c := createCmd(p.T(), checkPVCCmd, kustomizeDir, p.config.envs(), nil)
 			output, err := c.CombinedOutput()
 			if err != nil {
@@ -302,21 +468,6 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 	}
 }
 
-func testdataFile(fields ...string) string {
-	return filepath.Join("testdata", filepath.Join(fields...))
-}
-
-func deleteKustomizeDeployment(t *testing.T, kustomizeDir string, envs []string) error {
-	_, err := runCmd(
-		t,
-		"kustomize build | kubectl delete --timeout=180s -f -",
-		testdataFile(kustomizeDir),
-		envs,
-		nil,
-	)
-	return err
-}
-
 func deleteCluster(t *testing.T, envs []string) error {
 	_, err := runCmd(
 		t,
@@ -326,50 +477,4 @@ func deleteCluster(t *testing.T, envs []string) error {
 		nil,
 	)
 	return err
-}
-
-func createCmd(t *testing.T, cmd, kustomizeDir string, envs []string, callback func(*exec.Cmd)) *exec.Cmd {
-	t.Logf("creating command: %s", cmd)
-	c := exec.Command("bash", "-c", cmd)
-	c.Env = append(os.Environ(), envs...)
-	c.Dir = kustomizeDir
-
-	if callback != nil {
-		callback(c)
-	}
-
-	return c
-}
-
-func runCmd(t *testing.T, cmd, kustomizeDir string, envs []string, callback func(*exec.Cmd)) (*exec.Cmd, error) {
-	t.Logf("running command: %s", cmd)
-
-	c := createCmd(t, cmd, kustomizeDir, envs, callback)
-	stdout, _ := c.StdoutPipe()
-	stderr, _ := c.StderrPipe()
-
-	err := c.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	stopCh := make(chan struct{})
-	go func() {
-		mergedReader := io.MultiReader(stderr, stdout)
-		scanner := bufio.NewScanner(mergedReader)
-		scanner.Split(bufio.ScanLines)
-		for scanner.Scan() {
-			t.Log(scanner.Text())
-		}
-
-		close(stopCh)
-	}()
-
-	<-stopCh
-	err = c.Wait()
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
 }

@@ -5,28 +5,32 @@ metadata:
 spec:
   containers:
   - name: helper-pod
-    image: xxx/storage-xfs-quota:v0.1
-    imagePullPolicy: Always
+    image: rancher/local-path-quota-helper:v0.0.34
+    imagePullPolicy: IfNotPresent
     securityContext:
       privileged: true
     volumeMounts:
-    - name: xfs-quota-projects
-      subPath: projects
+    - name: quota-projects
       mountPath: /etc/projects
-    - name: xfs-quota-projects
-      subPath: projid
+    - name: quota-projid
       mountPath: /etc/projid
     - name: device-dir
       mountPath: /dev
+    - name: lock-dir
+      mountPath: /var/lock
   volumes:
-  - name: xfs-quota-projects
+  - name: quota-projects
     hostPath:
       path: /etc/projects
       type: FileOrCreate
-  - name: xfs-quota-projid
+  - name: quota-projid
     hostPath:
       path: /etc/projid
       type: FileOrCreate
   - name: device-dir
     hostPath:
       path: /dev
+  - name: lock-dir
+    hostPath:
+      path: /var/lock
+      type: DirectoryOrCreate

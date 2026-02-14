@@ -1,0 +1,61 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+data:
+  config.json: |-
+    {
+      "nodePathMap": [
+        {
+          "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+          "paths": ["/mnt/data"]
+        }
+      ]
+    }
+  setup: |-
+    #!/bin/sh
+    exec /opt/local-path-provisioner/setup
+  teardown: |-
+    #!/bin/sh
+    exec /opt/local-path-provisioner/teardown
+  resize: |-
+    #!/bin/sh
+    exec /opt/local-path-provisioner/resize "$@"
+  helperPod.yaml: |-
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: helper-pod
+    spec:
+      containers:
+      - name: helper-pod
+        image: local-path-quota-helper:dev
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: quota-projects
+          mountPath: /etc/projects
+        - name: quota-projid
+          mountPath: /etc/projid
+        - name: device-dir
+          mountPath: /dev
+        - name: lock-dir
+          mountPath: /var/lock
+      volumes:
+      - name: quota-projects
+        hostPath:
+          path: /etc/projects
+          type: FileOrCreate
+      - name: quota-projid
+        hostPath:
+          path: /etc/projid
+          type: FileOrCreate
+      - name: device-dir
+        hostPath:
+          path: /dev
+      - name: lock-dir
+        hostPath:
+          path: /var/lock
+          type: DirectoryOrCreate

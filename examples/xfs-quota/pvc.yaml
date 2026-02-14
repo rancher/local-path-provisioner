@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: xfs-quota-test-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path-xfs-quota
+  resources:
+    requests:
+      # XFS project quota enforces this as a hard limit at the filesystem level
+      storage: 1Gi

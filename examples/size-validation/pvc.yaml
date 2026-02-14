@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: size-validation-test-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path-bounded
+  resources:
+    requests:
+      # Must be between 1Gi and 50Gi (as configured in storageClassConfigs)
+      storage: 10Gi

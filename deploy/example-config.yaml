@@ -19,7 +19,21 @@ data:
                     "node":"yasker-lp-dev3",
                     "paths":[]
             }
-            ]
+            ],
+            "storageClassConfigs": {
+                    "local-path-limited": {
+                            "minSize": "1Gi",
+                            "maxSize": "50Gi",
+                            "nodePathMap": [
+                            {
+                                    "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                                    "paths": [
+                                            {"path": "/opt/local-path-provisioner", "maxCapacity": "200Gi"}
+                                    ]
+                            }
+                            ]
+                    }
+            }
     }
   setup: |-
     #!/bin/sh
@@ -29,6 +43,17 @@ data:
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
+  resize: |-
+    #!/bin/sh
+    set -eu
+    action="${1:-resize}"
+    if [ "$action" = "check-usage" ]; then
+        usage=$(du -sb "$VOL_DIR" 2>/dev/null | awk '{print $1}')
+        [ -z "$usage" ] && usage=0
+        echo "USAGE_BYTES=$usage"
+        exit 0
+    fi
+    echo "No quota enforcement, resize is a metadata-only operation."
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod
