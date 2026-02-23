@@ -34,7 +34,7 @@ const (
 )
 
 const (
-	KeyNode = "kubernetes.io/hostname"
+	DefaultNodeAffinityKey = "kubernetes.io/hostname"
 
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 
@@ -458,7 +458,13 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		// affinity, as path is accessible from any node
 		nodeAffinity = nil
 	} else {
-		valueNode, ok := node.GetLabels()[KeyNode]
+		affinityKey := DefaultNodeAffinityKey
+		if storageClass.Parameters != nil {
+			if key, ok := storageClass.Parameters["nodeAffinityKey"]; ok && key != "" {
+				affinityKey = key
+			}
+		}
+		valueNode, ok := node.GetLabels()[affinityKey]
 		if !ok {
 			valueNode = nodeName
 		}
@@ -468,7 +474,7 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 					{
 						MatchExpressions: []v1.NodeSelectorRequirement{
 							{
-								Key:      KeyNode,
+								Key:      affinityKey,
 								Operator: v1.NodeSelectorOpIn,
 								Values: []string{
 									valueNode,
@@ -587,7 +593,7 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg 
 	node = ""
 	for _, selectorTerm := range required.NodeSelectorTerms {
 		for _, expression := range selectorTerm.MatchExpressions {
-			if expression.Key == KeyNode && expression.Operator == v1.NodeSelectorOpIn {
+			if expression.Operator == v1.NodeSelectorOpIn {
 				if len(expression.Values) != 1 {
 					return "", "", fmt.Errorf("multiple values for the node affinity")
 				}

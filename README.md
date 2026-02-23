@@ -297,6 +297,30 @@ reclaimPolicy: Delete
 
 Here the provisioner will use the path `/data/ssd` with a subdirectory per namespace and PVC when storage class `ssd-local-path` is used.
 
+### Node Affinity Key
+
+By default, PersistentVolumes created by the provisioner use the `kubernetes.io/hostname` label for node affinity. This ensures the volume is only accessible on the node where it was provisioned.
+
+In environments where node hostnames are not stable (e.g., VMs managed by orchestrators that assign new hostnames on recreation), the PV node affinity can reference a stale hostname, making the volume unschedulable. The `nodeAffinityKey` StorageClass parameter allows you to specify a different node label key that remains stable across node restarts or recreation.
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-stable
+provisioner: rancher.io/local-path
+parameters:
+  nodeAffinityKey: my.domain/stable-node-id
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+```
+
+When using this parameter, make sure every node in the cluster has the specified label set. The provisioner reads the label value from the selected node at provisioning time and writes it into the PV's `nodeAffinity` field.
+
+If the parameter is not specified, the default `kubernetes.io/hostname` behavior is preserved.
+
+**Upgrade note:** Existing PVs created before adding `nodeAffinityKey` retain their original `kubernetes.io/hostname` affinity. The provisioner handles deletion of both old and new PVs transparently. Only newly provisioned PVs will use the custom key.
+
 ## Uninstall
 
 Before uninstallation, make sure the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
