@@ -155,6 +155,41 @@ func (p *PodTestSuite) xxTestPodWithMultipleStorageClasses() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+func (p *PodTestSuite) TestPodWithCustomNodeAffinityKey() {
+	p.kustomizeDir = "pod-with-custom-node-affinity-key"
+	kustomizeDir := testdataFile(p.kustomizeDir)
+
+	customLabel := "test.example.com/stable-id"
+	customValue := "my-stable-node"
+
+	// Label the kind-worker node with the custom label before deploying
+	labelCmd := fmt.Sprintf("kubectl label node kind-worker %s=%s --overwrite", customLabel, customValue)
+	_, err := runCmd(p.T(), labelCmd, "", p.config.envs(), nil)
+	if err != nil {
+		p.FailNow("", "failed to label node", err)
+	}
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+
+	// Verify the PV was created with the custom node affinity key
+	affinityCmd := `kubectl get pv -o jsonpath='{.items[0].spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].key}'`
+	c := createCmd(p.T(), affinityCmd, kustomizeDir, p.config.envs(), nil)
+	output, err := c.CombinedOutput()
+	if err != nil {
+		p.FailNow("", "failed to get PV node affinity key", err)
+	}
+	p.Equal(customLabel, strings.Trim(string(output), "'"), "PV should use the custom node affinity key")
+
+	// Verify the affinity value matches what was set on the node
+	valueCmd := `kubectl get pv -o jsonpath='{.items[0].spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0]}'`
+	c = createCmd(p.T(), valueCmd, kustomizeDir, p.config.envs(), nil)
+	output, err = c.CombinedOutput()
+	if err != nil {
+		p.FailNow("", "failed to get PV node affinity value", err)
+	}
+	p.Equal(customValue, strings.Trim(string(output), "'"), "PV node affinity value should match the custom label value")
+}
+
 func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
 	p.kustomizeDir = "custom-path-pattern"
 
