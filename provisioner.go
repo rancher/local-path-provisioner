@@ -42,9 +42,12 @@ const (
 	helperDataVolName   = "data"
 	helperScriptVolName = "script"
 
-	envVolDir  = "VOL_DIR"
-	envVolMode = "VOL_MODE"
-	envVolSize = "VOL_SIZE_BYTES"
+	envVolDir   = "VOL_DIR"
+	envVolMode  = "VOL_MODE"
+	envVolSize  = "VOL_SIZE_BYTES"
+	envVolUser  = "VOL_USER"
+	envVolGroup = "VOL_GROUP"
+	envVolPerm  = "VOL_PERM"
 )
 
 const (
@@ -330,6 +333,26 @@ func pathFromPattern(pattern string, opts pvController.ProvisionOptions, allowUn
 	return path, nil
 }
 
+func dataFromPattern(pattern string, opts pvController.ProvisionOptions) (string, error) {
+	metadata := pvMetadata{
+		PVName: opts.PVName,
+		PVC:    opts.PVC.ObjectMeta,
+	}
+
+	tpl, err := template.New("dataPattern").Parse(pattern)
+	if err != nil {
+		return "", err
+	}
+
+	buf := new(bytes.Buffer)
+	err = tpl.Execute(buf, metadata)
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
 func (p *LocalPathProvisioner) Provision(_ context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
 	cfg, err := p.pickConfig(opts.StorageClass.Name)
 	if err != nil {
@@ -425,12 +448,40 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 	} else {
 		provisionCmd = append(provisionCmd, p.config.SetupCommand)
 	}
+	var user, group, perm string
+	userPattern, exists := opts.StorageClass.Parameters["userPattern"]
+	if exists {
+		user, err = dataFromPattern(userPattern, opts)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create user from pattern %v", userPattern)
+			return nil, pvController.ProvisioningFinished, err
+		}
+	}
+	groupPattern, exists := opts.StorageClass.Parameters["groupPattern"]
+	if exists {
+		group, err = dataFromPattern(groupPattern, opts)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create group from pattern %v", groupPattern)
+			return nil, pvController.ProvisioningFinished, err
+		}
+	}
+	permPattern, exists := opts.StorageClass.Parameters["permPattern"]
+	if exists {
+		perm, err = dataFromPattern(permPattern, opts)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create perm from pattern %v", permPattern)
+			return nil, pvController.ProvisioningFinished, err
+		}
+	}
 	if err := p.createHelperPod(ActionTypeCreate, provisionCmd, volumeOptions{
 		Name:        name,
 		Path:        path,
 		Mode:        *pvc.Spec.VolumeMode,
 		SizeInBytes: storage.Value(),
 		Node:        nodeName,
+		User:        user,
+		Group:       group,
+		Perm:        perm,
 	}, c); err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
@@ -611,6 +662,9 @@ type volumeOptions struct {
 	Mode        v1.PersistentVolumeMode
 	SizeInBytes int64
 	Node        string
+	User        string
+	Group       string
+	Perm        string
 }
 
 func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, o volumeOptions, cfg *StorageClassConfig) (err error) {
@@ -695,6 +749,9 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		{Name: envVolDir, Value: filepath.Join(parentDir, volumeDir)},
 		{Name: envVolMode, Value: string(o.Mode)},
 		{Name: envVolSize, Value: strconv.FormatInt(o.SizeInBytes, 10)},
+		{Name: envVolUser, Value: o.User},
+		{Name: envVolGroup, Value: o.Group},
+		{Name: envVolPerm, Value: o.Perm},
 	}
 
 	// use different name for helper pods
