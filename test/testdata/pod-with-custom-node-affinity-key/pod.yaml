@@ -3,6 +3,8 @@ kind: Pod
 metadata:
   name: volume-test
 spec:
+  nodeSelector:
+    test.example.com/stable-id: my-stable-node
   containers:
   - name: volume-test
     image: nginx:stable-alpine
