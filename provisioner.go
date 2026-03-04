@@ -56,7 +56,10 @@ const (
 )
 
 const (
-	nodeNameAnnotationKey = "local.path.provisioner/selected-node"
+	nodeNameAnnotationKey     = "local.path.provisioner/selected-node"
+	userPatternAnnotationKey  = "userPattern"
+	groupPatternAnnotationKey = "groupPattern"
+	permPatternAnnotationKey  = "permPattern"
 )
 
 var (
@@ -450,6 +453,9 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 	}
 	var user, group, perm string
 	userPattern, exists := opts.StorageClass.Parameters["userPattern"]
+	if !exists {
+		userPattern, exists = opts.StorageClass.GetAnnotations()[userPatternAnnotationKey]
+	}
 	if exists {
 		user, err = dataFromPattern(userPattern, opts)
 		if err != nil {
@@ -458,6 +464,9 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		}
 	}
 	groupPattern, exists := opts.StorageClass.Parameters["groupPattern"]
+	if !exists {
+		groupPattern, exists = opts.StorageClass.GetAnnotations()[groupPatternAnnotationKey]
+	}
 	if exists {
 		group, err = dataFromPattern(groupPattern, opts)
 		if err != nil {
@@ -466,6 +475,9 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		}
 	}
 	permPattern, exists := opts.StorageClass.Parameters["permPattern"]
+	if !exists {
+		permPattern, exists = opts.StorageClass.GetAnnotations()[permPatternAnnotationKey]
+	}
 	if exists {
 		perm, err = dataFromPattern(permPattern, opts)
 		if err != nil {

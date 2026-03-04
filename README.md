@@ -284,6 +284,8 @@ By default the volume subdirectory is named using the template `{{ .PVName }}_{{
 
 When `pathPattern` is set, the rendered path must start with `{{ .PVC.Namespace }}/{{ .PVC.Name }}/` and must not contain directory traversal (for example `../`).
 
+The patterns of `userPattern`, `groupPattern` and `permPattern` (either in `parameters` or `metadata.annotations`) can be used to set user, group, permissions of the volume's directory based on data in the PVC.  These are set to `$VOL_USER`, `$VOL_GROUP` and `$VOL_PERM` in the startup script.
+
 If you need to keep an existing `pathPattern` that does not follow the prefix requirement, you can opt out by setting `allowUnsafePathPattern: "true"` on the StorageClass (either in `parameters` or `metadata.annotations`). When enabled, the provisioner will skip these validations.
 ```
 apiVersion: storage.k8s.io/v1
