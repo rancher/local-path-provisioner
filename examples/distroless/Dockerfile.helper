@@ -1,4 +1,4 @@
-FROM golang:1.26.0-alpine AS builder
+FROM registry.suse.com/bci/golang:1.26 AS builder
 
 COPY main.go /main.go
 COPY go.mod /go.mod
