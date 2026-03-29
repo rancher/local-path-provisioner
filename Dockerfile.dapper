@@ -1,9 +1,13 @@
-FROM golang:1.26.1-alpine
+FROM registry.suse.com/bci/golang:1.26
 
 ARG DAPPER_HOST_ARCH
 ENV ARCH $DAPPER_HOST_ARCH
 
-RUN apk -U add bash git gcc musl-dev docker vim less file curl wget ca-certificates jq
+RUN zypper -n ref && \
+    zypper update -y
+
+RUN zypper -n install bash git gcc docker vim less file curl wget ca-certificates jq
+
 RUN rm -rf /go/src /go/pkg
 RUN if [ "${ARCH}" == "amd64" ] || [ "${ARCH}" == "arm64" ]; then \
     kind_version=$(curl -sL https://api.github.com/repos/kubernetes-sigs/kind/releases/latest | jq -r ".tag_name") && curl -sL "https://kind.sigs.k8s.io/dl/${kind_version}/kind-linux-${ARCH}" -o kind && install kind /usr/local/bin; \
