@@ -10,11 +10,8 @@ cp bin/local-path-provisioner* dist/artifacts/
 
 IMAGE=${REPO}/local-path-provisioner:${TAG}
 DOCKERFILE=package/Dockerfile
-if [ -e ${DOCKERFILE}.${ARCH} ]; then
-    DOCKERFILE=${DOCKERFILE}.${ARCH}
-fi
 
-buildx build --load -t ${IMAGE} -f ${DOCKERFILE} .
+docker buildx build --load -t ${IMAGE} -f ${DOCKERFILE} .
 echo Built ${IMAGE}
 
 echo ${IMAGE} > ./bin/latest_image

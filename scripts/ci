@@ -1,15 +1,11 @@
 #!/bin/bash
 set -e
 
-cd $(dirname $0)
+cd $(dirname $0)/..
 
-./build
-./test
-./validate
-./validate-ci
-./package
+make ci
 
-image=`cat ../bin/latest_image`
+image=$(cat ./bin/latest_image)
 
 echo
 echo Local Path Provisioner image: ${image}

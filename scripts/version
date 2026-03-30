@@ -14,7 +14,7 @@ else
 fi
 
 if [ -z "$ARCH" ]; then
-    ARCH=$(go env GOHOSTARCH)
+    ARCH=$(go env GOHOSTARCH 2>/dev/null || uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 fi
 
 SUFFIX="-${ARCH}"
