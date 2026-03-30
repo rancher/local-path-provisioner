@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7.0
 
 # Build stage: cross-compile binaries for all architectures
-FROM --platform=$BUILDPLATFORM registry.suse.com/bci/golang:1.26 AS builder
-RUN zypper -n ref && zypper update -y
-RUN zypper -n install bash git gcc
+FROM --platform=$BUILDPLATFORM golang:1.26.1-alpine AS builder
+RUN apk update
+RUN apk -U add bash git gcc musl-dev docker vim less file curl wget ca-certificates jq
 WORKDIR /src
 COPY . .
 RUN ./scripts/build
@@ -26,7 +26,7 @@ FROM scratch AS ci-binary
 COPY --from=validate /src/bin/ /
 
 # Final runtime image
-FROM registry.suse.com/bci/golang:1.26
+FROM golang:1.26.1-alpine
 
 ARG TARGETPLATFORM
 ARG TARGETARCH
@@ -36,10 +36,8 @@ RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/a
     exit 1; \
     fi
 
-RUN zypper -n ref && \
-    zypper update -y
-
-RUN zypper -n install busybox zlib
+RUN apk update
+RUN apk upgrade --no-cache busybox zlib
 
 COPY --from=builder /src/bin/local-path-provisioner-${TARGETARCH} /usr/bin/local-path-provisioner
 CMD ["local-path-provisioner"]
