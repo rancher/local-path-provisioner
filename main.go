@@ -22,35 +22,37 @@ import (
 )
 
 var (
-	VERSION                       = "0.0.1"
-	FlagConfigFile                = "config"
-	FlagProvisionerName           = "provisioner-name"
-	EnvProvisionerName            = "PROVISIONER_NAME"
-	DefaultProvisionerName        = "rancher.io/local-path"
-	FlagNamespace                 = "namespace"
-	EnvNamespace                  = "POD_NAMESPACE"
-	DefaultNamespace              = "local-path-storage"
-	FlagHelperImage               = "helper-image"
-	EnvHelperImage                = "HELPER_IMAGE"
-	DefaultHelperImage            = "rancher/library-busybox:1.32.1"
-	FlagServiceAccountName        = "service-account-name"
-	DefaultServiceAccount         = "local-path-provisioner-service-account"
-	EnvServiceAccountName         = "SERVICE_ACCOUNT_NAME"
-	FlagKubeconfig                = "kubeconfig"
-	DefaultConfigFileKey          = "config.json"
-	DefaultConfigMapName          = "local-path-config"
-	FlagConfigMapName             = "configmap-name"
-	FlagHelperPodFile             = "helper-pod-file"
-	DefaultHelperPodFile          = "helperPod.yaml"
-	FlagWorkerThreads             = "worker-threads"
-	DefaultWorkerThreads          = pvController.DefaultThreadiness
-	FlagProvisioningRetryCount    = "provisioning-retry-count"
-	DefaultProvisioningRetryCount = pvController.DefaultFailedProvisionThreshold
-	FlagDeletionRetryCount        = "deletion-retry-count"
-	DefaultDeletionRetryCount     = pvController.DefaultFailedDeleteThreshold
-	EnvConfigMountPath            = "CONFIG_MOUNT_PATH"
-	FlagKubeClientBurst           = "kube-client-burst"
-	FlagKubeClientQPS             = "kube-client-qps"
+	VERSION                          = "0.0.1"
+	FlagConfigFile                   = "config"
+	FlagProvisionerName              = "provisioner-name"
+	EnvProvisionerName               = "PROVISIONER_NAME"
+	DefaultProvisionerName           = "rancher.io/local-path"
+	FlagNamespace                    = "namespace"
+	EnvNamespace                     = "POD_NAMESPACE"
+	DefaultNamespace                 = "local-path-storage"
+	FlagHelperImage                  = "helper-image"
+	EnvHelperImage                   = "HELPER_IMAGE"
+	DefaultHelperImage               = "rancher/library-busybox:1.32.1"
+	FlagServiceAccountName           = "service-account-name"
+	DefaultServiceAccount            = "local-path-provisioner-service-account"
+	EnvServiceAccountName            = "SERVICE_ACCOUNT_NAME"
+	FlagKubeconfig                   = "kubeconfig"
+	DefaultConfigFileKey             = "config.json"
+	DefaultConfigMapName             = "local-path-config"
+	FlagConfigMapName                = "configmap-name"
+	FlagHelperPodFile                = "helper-pod-file"
+	DefaultHelperPodFile             = "helperPod.yaml"
+	FlagWorkerThreads                = "worker-threads"
+	DefaultWorkerThreads             = pvController.DefaultThreadiness
+	FlagProvisioningRetryCount       = "provisioning-retry-count"
+	DefaultProvisioningRetryCount    = pvController.DefaultFailedProvisionThreshold
+	FlagDeletionRetryCount           = "deletion-retry-count"
+	DefaultDeletionRetryCount        = pvController.DefaultFailedDeleteThreshold
+	FlagAllowUnsafeHelperPodTemplate = "allow-unsafe-helper-pod-template"
+	EnvConfigMountPath               = "CONFIG_MOUNT_PATH"
+	EnvAllowUnsafeHelperPodTemplate  = "ALLOW_UNSAFE_HELPER_POD_TEMPLATE"
+	FlagKubeClientBurst              = "kube-client-burst"
+	FlagKubeClientQPS                = "kube-client-qps"
 )
 
 func cmdNotFound(_ *cli.Context, command string) {
@@ -133,6 +135,11 @@ func StartCmd() cli.Command {
 				Name:  FlagDeletionRetryCount,
 				Usage: "Number of retries of failed volume deletion. 0 means retry indefinitely.",
 				Value: DefaultDeletionRetryCount,
+			},
+			cli.BoolFlag{
+				Name:   FlagAllowUnsafeHelperPodTemplate,
+				Usage:  "Allow helper pod templates to set unsafe pod fields such as securityContext or custom volumes.",
+				EnvVar: EnvAllowUnsafeHelperPodTemplate,
 			},
 			cli.IntFlag{
 				Name:  FlagKubeClientBurst,
@@ -271,7 +278,17 @@ func startDaemon(c *cli.Context) error {
 		return fmt.Errorf("invalid zero or negative integer flag %v", FlagWorkerThreads)
 	}
 
-	provisioner, err := NewProvisioner(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
+	provisioner, err := NewProvisioner(
+		ctx,
+		kubeClient,
+		configFile,
+		namespace,
+		helperImage,
+		configMapName,
+		serviceAccountName,
+		helperPodYaml,
+		c.Bool(FlagAllowUnsafeHelperPodTemplate),
+	)
 	if err != nil {
 		return err
 	}

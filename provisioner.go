@@ -69,12 +69,13 @@ type LocalPathProvisioner struct {
 	helperImage        string
 	serviceAccountName string
 
-	config        *Config
-	configData    *ConfigData
-	configFile    string
-	configMapName string
-	configMutex   *sync.RWMutex
-	helperPod     *v1.Pod
+	config                       *Config
+	configData                   *ConfigData
+	configFile                   string
+	configMapName                string
+	configMutex                  *sync.RWMutex
+	helperPod                    *v1.Pod
+	allowUnsafeHelperPodTemplate bool
 }
 
 type NodePathMapData struct {
@@ -113,7 +114,7 @@ type Config struct {
 }
 
 func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
-	configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml string) (*LocalPathProvisioner, error) {
+	configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml string, allowUnsafeHelperPodTemplate bool) (*LocalPathProvisioner, error) {
 	p := &LocalPathProvisioner{
 		ctx: ctx,
 
@@ -123,14 +124,15 @@ func NewProvisioner(ctx context.Context, kubeClient *clientset.Clientset,
 		serviceAccountName: serviceAccountName,
 
 		// config will be updated shortly by p.refreshConfig()
-		config:        nil,
-		configFile:    configFile,
-		configData:    nil,
-		configMapName: configMapName,
-		configMutex:   &sync.RWMutex{},
+		config:                       nil,
+		configFile:                   configFile,
+		configData:                   nil,
+		configMapName:                configMapName,
+		configMutex:                  &sync.RWMutex{},
+		allowUnsafeHelperPodTemplate: allowUnsafeHelperPodTemplate,
 	}
 	var err error
-	p.helperPod, err = loadHelperPodFile(helperPodYaml)
+	p.helperPod, err = loadHelperPodFile(helperPodYaml, p.allowUnsafeHelperPodTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +187,7 @@ func (p *LocalPathProvisioner) refreshHelperPod() error {
 		return err
 	}
 
-	p.helperPod, err = loadHelperPodFile(newHelperPod)
+	p.helperPod, err = loadHelperPodFile(newHelperPod, p.allowUnsafeHelperPodTemplate)
 	if err != nil {
 		return err
 	}

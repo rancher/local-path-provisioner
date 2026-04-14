@@ -25,7 +25,7 @@ func loadFile(filepath string) (string, error) {
 	return string(helperPodYaml), nil
 }
 
-func loadHelperPodFile(helperPodYaml string) (*v1.Pod, error) {
+func loadHelperPodFile(helperPodYaml string, allowUnsafe bool) (*v1.Pod, error) {
 	helperPodJSON, err := yaml.YAMLToJSON([]byte(helperPodYaml))
 	if err != nil {
 		return nil, fmt.Errorf("invalid YAMLToJSON the helper pod with helperPodYaml: %v", helperPodYaml)
@@ -38,5 +38,58 @@ func loadHelperPodFile(helperPodYaml string) (*v1.Pod, error) {
 	if len(p.Spec.Containers) == 0 {
 		return nil, fmt.Errorf("helper pod template does not specify any container")
 	}
+	if err := validateHelperPodTemplate(&p, allowUnsafe); err != nil {
+		return nil, err
+	}
 	return &p, nil
+}
+
+func validateHelperPodTemplate(p *v1.Pod, allowUnsafe bool) error {
+	if allowUnsafe {
+		return nil
+	}
+
+	forbid := func(cond bool, field string) error {
+		if !cond {
+			return nil
+		}
+		return fmt.Errorf("helper pod template must not %s unless %s is enabled", field, FlagAllowUnsafeHelperPodTemplate)
+	}
+
+	if len(p.Spec.Containers) != 1 {
+		return fmt.Errorf("helper pod template must specify exactly one container")
+	}
+
+	container := p.Spec.Containers[0]
+	checks := []struct {
+		invalid bool
+		field   string
+	}{
+		{len(p.Spec.InitContainers) > 0, "define initContainers"},
+		{len(p.Spec.EphemeralContainers) > 0, "define ephemeralContainers"},
+		{len(p.Spec.Volumes) > 0, "define custom volumes"},
+		{p.Spec.HostNetwork || p.Spec.HostPID || p.Spec.HostIPC, "enable host namespaces"},
+		{p.Spec.NodeName != "", "set spec.nodeName"},
+		{p.Spec.ServiceAccountName != "", "set spec.serviceAccountName"},
+		{p.Spec.SecurityContext != nil, "set pod securityContext"},
+		{container.SecurityContext != nil, "set container securityContext"},
+		{len(container.VolumeMounts) > 0, "define custom volumeMounts"},
+		{len(container.EnvFrom) > 0, "define envFrom"},
+		{container.Lifecycle != nil, "define container lifecycle hooks"},
+		{container.LivenessProbe != nil, "define container livenessProbe"},
+		{container.ReadinessProbe != nil, "define container readinessProbe"},
+		{container.StartupProbe != nil, "define container startupProbe"},
+	}
+	for _, check := range checks {
+		if err := forbid(check.invalid, check.field); err != nil {
+			return err
+		}
+	}
+	for _, env := range container.Env {
+		if err := forbid(env.ValueFrom != nil, fmt.Sprintf("define env.valueFrom (env %q)", env.Name)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
