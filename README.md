@@ -226,6 +226,10 @@ The configuration must obey following rules:
 * The `teardown` script is run after the volume is deleted, to cleanup the volume directory on the node.
 * The `helperPod.yaml` template is used to create a helper Pod that runs the `setup` or `teardown` script.
 
+By default, the helper pod template is validated before it is accepted. The template may customize the helper container image and regular pod settings such as `priorityClassName` and `tolerations`, but it must not define its own `securityContext`, `volumes`, `volumeMounts`, `initContainers`, `ephemeralContainers`, `envFrom`, `env.valueFrom`, `lifecycle`, `livenessProbe`, `readinessProbe`, `startupProbe`, host namespaces, `spec.nodeName`, or `spec.serviceAccountName`.
+
+If you intentionally need a privileged helper pod template, you must opt in explicitly by setting `--allow-unsafe-helper-pod-template` or `ALLOW_UNSAFE_HELPER_POD_TEMPLATE=true` on the provisioner deployment. This disables those safety checks and should only be used for trusted, administrator-managed configurations.
+
 The scripts receive their input as environment variables:
 
 | Environment variable | Description |
@@ -254,6 +258,8 @@ If the reload fails, the provisioner will log the error and **continue using the
 >time="2018-10-03T05:23:35Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate path /data1 on node yasker-lp-dev1
 
 >time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
+
+The same behavior applies to `helperPod.yaml`: if a reloaded template violates the helper pod safety checks, the provisioner logs the validation error and keeps using the last valid helper pod template.
 
 ### Volume Types
 
