@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7.0
 
 # Build stage: cross-compile binaries for all architectures
-FROM --platform=$BUILDPLATFORM golang:1.26.1-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-alpine AS builder
 RUN apk update
 RUN apk -U add bash git gcc musl-dev docker vim less file curl wget ca-certificates jq
 WORKDIR /src
@@ -26,7 +26,7 @@ FROM scratch AS ci-binary
 COPY --from=validate /src/bin/ /
 
 # Final runtime image
-FROM golang:1.26.1-alpine
+FROM golang:1.26.2-alpine
 
 ARG TARGETPLATFORM
 ARG TARGETARCH
