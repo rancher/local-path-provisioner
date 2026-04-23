@@ -106,6 +106,30 @@ podSecurityContext: {}
 
 hostUsers: true
 
+# `networkPolicy` allows you to define acceptable network trafic
+networkPolicy:
+  # -- Specifies whether the networkPolicy should be created.
+  enabled: false
+  # -- The ingress traffic
+  # Should match the health and (optionally) metrics port
+  ingress: []
+  # -- The egress traffic
+  # The minimum egress ports required to function are:
+  #   DNS (53/udp, 53/tcp)
+  #   API server (80/tcp, 443/tcp, 6443/tcp) NOTE: OKD and Openshift use 6443/tcp
+  egress:
+  - ports:
+    - port: 80
+      protocol: TCP
+    - port: 443
+      protocol: TCP
+    - port: 53
+      protocol: TCP
+    - port: 53
+      protocol: UDP
+    - port: 6443
+      protocol: TCP
+
 securityContext: {}
   # allowPrivilegeEscalation: false
   # seccompProfile:
