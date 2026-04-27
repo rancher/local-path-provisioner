@@ -43,7 +43,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - local-path-provisioner
+            {{- if .Values.debug }}
             - --debug
+            {{- end }}
             - start
             - --config
             - /etc/config/config.json
