@@ -193,5 +193,8 @@ configmap:
 # Number of retries of failed volume deletion. 0 means retry indefinitely.
 # deletionRetryCount: 15
 
+# Enable debug logging
+debug: false
+
 # Extra arguments to pass to the CLI
 extraArgs: []
