@@ -5,12 +5,12 @@ commonLabels: {}
 namespaceOverride: ""
 
 image:
-  repository: rancher/local-path-provisioner
+  repository: docker.io/rancher/local-path-provisioner
   tag: v0.0.35
   pullPolicy: IfNotPresent
 
 helperImage:
-  repository: busybox
+  repository: docker.io/library/busybox
   tag: latest
 
 defaultSettings:

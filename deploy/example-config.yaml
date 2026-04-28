@@ -42,5 +42,5 @@ data:
           effect: NoSchedule
       containers:
       - name: helper-pod
-        image: busybox
+        image: docker.io/library/busybox
         imagePullPolicy: IfNotPresent
