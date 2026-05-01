@@ -233,6 +233,9 @@ The scripts receive their input as environment variables:
 | `VOL_DIR` | Volume directory that should be created or removed. |
 | `VOL_MODE` | The PersistentVolume mode (`Block` or `Filesystem`). |
 | `VOL_SIZE_BYTES` | Requested volume size in bytes. |
+| `VOL_USER` | The user assigned from `userPattern` |
+| `VOL_GROUP` | The group assigned from `groupPattern` |
+| `VOL_PERM` | The permissions assigned from `permPattern` |
 
 #### Reloading
 
@@ -280,6 +283,8 @@ If more than one `paths` are specified in the `nodePathMap` the path is chosen r
 By default the volume subdirectory is named using the template `{{ .PVName }}_{{ .PVC.Namespace }}_{{ .PVC.Name }}` which make the directory specific to the PV instance. The template can be changed using the `pathPattern` parameter which is interpreted as a go template. The template has access to the PV name using the `PVName` variable and the PVC metadata object, including labels and annotations, with the `PVC` variable.
 
 When `pathPattern` is set, the rendered path must start with `{{ .PVC.Namespace }}/{{ .PVC.Name }}/` and must not contain directory traversal (for example `../`).
+
+The patterns of `userPattern`, `groupPattern` and `permPattern` (either in `parameters` or `metadata.annotations`) can be used to set user, group, permissions of the volume's directory based on data in the PVC.  These are set to `$VOL_USER`, `$VOL_GROUP` and `$VOL_PERM` in the startup script.
 
 If you need to keep an existing `pathPattern` that does not follow the prefix requirement, you can opt out by setting `allowUnsafePathPattern: "true"` on the StorageClass (either in `parameters` or `metadata.annotations`). When enabled, the provisioner will skip these validations.
 ```
