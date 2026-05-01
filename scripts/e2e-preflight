@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+set_sysctl() {
+    local key=$1
+    local min=$2
+    local current
+
+    if ! current=$(sysctl -n "${key}" 2>/dev/null); then
+        return
+    fi
+
+    if [ "${current}" -ge "${min}" ]; then
+        return
+    fi
+
+    echo "Increasing ${key} from ${current} to ${min}"
+    if [ "$(id -u)" = "0" ]; then
+        sysctl -w "${key}=${min}"
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+        sudo -n sysctl -w "${key}=${min}"
+    else
+        echo "Unable to increase ${key}; rerun as root or install sudo" >&2
+        exit 1
+    fi
+}
+
+set_sysctl fs.inotify.max_user_instances 8192
