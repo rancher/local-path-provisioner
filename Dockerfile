@@ -6,6 +6,9 @@ ARG TARGETARCH
 
 ENV ARCH=${TARGETARCH}
 ENV GOFLAGS=-mod=vendor
+ENV KIND_VERSION=v0.31.0
+ENV KUBECTL_VERSION=v1.35.1
+ENV KUSTOMIZE_VERSION=v5.5.0
 ENV GOLANGCI_LINT_VERSION=v2.11.4
 
 RUN apk add --no-cache \
@@ -24,13 +27,11 @@ RUN apk add --no-cache \
     wget
 
 RUN if [ "${ARCH}" = "amd64" ] || [ "${ARCH}" = "arm64" ]; then \
-    kind_version=$(curl -sL https://api.github.com/repos/kubernetes-sigs/kind/releases/latest | jq -r ".tag_name") && \
-    curl -sL "https://kind.sigs.k8s.io/dl/${kind_version}/kind-linux-${ARCH}" -o /usr/local/bin/kind && \
+    curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}" -o /usr/local/bin/kind && \
     chmod +x /usr/local/bin/kind && \
-    kubectl_version=$(curl -sL https://dl.k8s.io/release/stable.txt) && \
-    curl -sL "https://dl.k8s.io/release/${kubectl_version}/bin/linux/${ARCH}/kubectl" -o /usr/local/bin/kubectl && \
+    curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" -o /usr/local/bin/kubectl && \
     chmod +x /usr/local/bin/kubectl && \
-    curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_${ARCH}.tar.gz" | tar -xz -C /usr/local/bin; \
+    curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_${ARCH}.tar.gz" | tar -xz -C /usr/local/bin; \
     fi
 
 RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | \
