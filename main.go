@@ -13,11 +13,14 @@ import (
 	"github.com/urfave/cli"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
+	resizeController "github.com/kubernetes-csi/external-resizer/pkg/controller"
 	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
 )
 
@@ -27,6 +30,7 @@ var (
 	FlagProvisionerName           = "provisioner-name"
 	EnvProvisionerName            = "PROVISIONER_NAME"
 	DefaultProvisionerName        = "rancher.io/local-path"
+	DefaultResizerName            = "rancher.io/local-path-resizer"
 	FlagNamespace                 = "namespace"
 	EnvNamespace                  = "POD_NAMESPACE"
 	DefaultNamespace              = "local-path-storage"
@@ -190,12 +194,13 @@ func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace, conf
 	}
 	value, ok := cm.Data[key]
 	if !ok {
-		return "", fmt.Errorf("%v is not exist in local-path-config ConfigMap", key)
+		return "", fmt.Errorf("%v does not exist in local-path-config ConfigMap", key)
 	}
 	return value, nil
 }
 
 func startDaemon(c *cli.Context) error {
+	logrus.Debug("daemon starting...")
 	ctx, cancelFn := context.WithCancel(context.TODO())
 	RegisterShutdownChannel(cancelFn)
 
@@ -271,7 +276,13 @@ func startDaemon(c *cli.Context) error {
 		return fmt.Errorf("invalid zero or negative integer flag %v", FlagWorkerThreads)
 	}
 
-	provisioner, err := NewProvisioner(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml)
+	resyncPeriod := pvController.DefaultResyncPeriod
+	maxRetryInterval := pvController.DefaultResyncPeriod
+	informerFactory := informers.NewSharedInformerFactory(kubeClient, resyncPeriod)
+	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims().Informer()
+	volumeInformer := informerFactory.Core().V1().PersistentVolumes().Informer()
+
+	provisioner, err := NewProvisioner(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml, provisionerName)
 	if err != nil {
 		return err
 	}
@@ -284,7 +295,34 @@ func startDaemon(c *cli.Context) error {
 		pvController.FailedProvisionThreshold(provisioningRetryCount),
 		pvController.FailedDeleteThreshold(deletionRetryCount),
 		pvController.Threadiness(workerThreads),
+		pvController.ClaimsInformer(claimInformer),
+		pvController.VolumesInformer(volumeInformer),
 	)
+
+	resizer, err := NewResizer(ctx, kubeClient, configFile, namespace, helperImage, configMapName, serviceAccountName, helperPodYaml, DefaultResizerName, provisionerName)
+	if err != nil {
+		return err
+	}
+	rc := resizeController.NewResizeController(
+		DefaultResizerName,
+		resizer,
+		kubeClient,
+		resyncPeriod,
+		informerFactory,
+		workqueue.DefaultTypedControllerRateLimiter[string](),
+		false,
+		maxRetryInterval)
+
+	logrus.Debug("Claim informer started")
+	go claimInformer.Run(ctx.Done())
+
+	logrus.Debug("Volume informer started")
+	go volumeInformer.Run(ctx.Done())
+
+	resizeWorkers := 1
+	logrus.Debugf("Resizer started in a separate thread with %d workers", resizeWorkers)
+	go rc.Run(resizeWorkers, ctx)
+
 	logrus.Debug("Provisioner started")
 	pc.Run(ctx)
 	logrus.Debug("Provisioner stopped")
