@@ -224,6 +224,56 @@ func (c *LocalPathCsiController) watchAndRefreshConfig() {
 	}()
 }
 
+func (c *LocalPathCsiController) getPathOnNode(node string, requestedPath string, config *StorageClassConfig) (string, error) {
+	c.configMutex.RLock()
+	defer c.configMutex.RUnlock()
+
+	if c.config == nil {
+		return "", fmt.Errorf("no valid config available")
+	}
+
+	if config != nil {
+		sharedFS, err := c.isSharedFilesystem(config)
+		if err != nil {
+			return "", err
+		}
+		if sharedFS {
+			// we are ignoring 'node' and returning shared FS path
+			return config.SharedFileSystemPath, nil
+		}
+	}
+
+	// we are working with local FS
+	npMap := config.NodePathMap[node]
+	if npMap == nil {
+		npMap = config.NodePathMap[NodeDefaultNonListedNodes]
+		if npMap == nil {
+			return "", fmt.Errorf("config doesn't contain node %v, and no %v available", node, NodeDefaultNonListedNodes)
+		}
+		logrus.Debugf("config doesn't contain node %v, use %v instead", node, NodeDefaultNonListedNodes)
+	}
+	paths := npMap.Paths
+	if len(paths) == 0 {
+		return "", fmt.Errorf("no local path available on node %v", node)
+	}
+	// if a particular path was requested by storage class
+	if requestedPath != "" {
+		if _, ok := paths[requestedPath]; !ok {
+			return "", fmt.Errorf("config doesn't contain path %v on node %v", requestedPath, node)
+		}
+		return requestedPath, nil
+	}
+	// if no particular path was requested, choose a random one
+	i := rand.IntN(len(paths))
+	for p := range paths {
+		if i == 0 {
+			return p, nil
+		}
+		i--
+	}
+	return "", fmt.Errorf("failed to select a random path: no path selected from %d candidates", len(paths))
+}
+
 func (c *LocalPathCsiController) isSharedFilesystem(config *StorageClassConfig) (bool, error) {
 	c.configMutex.RLock()
 	defer c.configMutex.RUnlock()
@@ -245,6 +295,75 @@ func (c *LocalPathCsiController) isSharedFilesystem(config *StorageClassConfig) 
 	}
 
 	return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are unconfigured")
+}
+
+func (c *LocalPathCsiController) pickConfig(storageClassName string) (*StorageClassConfig, error) {
+	if len(c.config.StorageClassConfigs) == 0 {
+		return &c.config.StorageClassConfig, nil
+	}
+	cfg, ok := c.config.StorageClassConfigs[storageClassName]
+	if !ok {
+		return nil, fmt.Errorf("BUG: Got request for unexpected storage class %s", storageClassName)
+	}
+	return &cfg, nil
+}
+
+func (c *LocalPathCsiController) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to getPathAndNodeForPV %v", pv.Name)
+	}()
+
+	volumeSource := pv.Spec.PersistentVolumeSource
+	if volumeSource.HostPath != nil && volumeSource.Local == nil {
+		path = volumeSource.HostPath.Path
+	} else if volumeSource.Local != nil && volumeSource.HostPath == nil {
+		path = volumeSource.Local.Path
+	} else {
+		return "", "", fmt.Errorf("no path set")
+	}
+
+	if cfg != nil {
+		sharedFS, err := c.isSharedFilesystem(cfg)
+		if err != nil {
+			return "", "", err
+		}
+
+		if sharedFS {
+			// We don't have affinity and can use any node
+			return path, "", nil
+		}
+	}
+
+	// Dealing with local filesystem
+
+	nodeAffinity := pv.Spec.NodeAffinity
+	if nodeAffinity == nil {
+		return "", "", fmt.Errorf("no NodeAffinity set")
+	}
+	required := nodeAffinity.Required
+	if required == nil {
+		return "", "", fmt.Errorf("no NodeAffinity.Required set")
+	}
+
+	node = ""
+	for _, selectorTerm := range required.NodeSelectorTerms {
+		for _, expression := range selectorTerm.MatchExpressions {
+			if expression.Operator == v1.NodeSelectorOpIn {
+				if len(expression.Values) != 1 {
+					return "", "", fmt.Errorf("multiple values for the node affinity")
+				}
+				node = expression.Values[0]
+				break
+			}
+		}
+		if node != "" {
+			break
+		}
+	}
+	if node == "" {
+		return "", "", fmt.Errorf("cannot find affinited node")
+	}
+	return path, node, nil
 }
 
 func (c *LocalPathCsiController) createHelperPod(action ActionType, cmd []string, o volumeOptions, cfg *StorageClassConfig) (err error) {
@@ -404,125 +523,6 @@ func (c *LocalPathCsiController) createHelperPod(action ActionType, cmd []string
 		logrus.Infof("Volume %v has been %vd on %v:%v", o.Name, action, o.Node, o.Path)
 	}
 	return nil
-}
-
-func (c *LocalPathCsiController) getPathOnNode(node string, requestedPath string, config *StorageClassConfig) (string, error) {
-	c.configMutex.RLock()
-	defer c.configMutex.RUnlock()
-
-	if c.config == nil {
-		return "", fmt.Errorf("no valid config available")
-	}
-
-	if config != nil {
-		sharedFS, err := c.isSharedFilesystem(config)
-		if err != nil {
-			return "", err
-		}
-		if sharedFS {
-			// we are ignoring 'node' and returning shared FS path
-			return config.SharedFileSystemPath, nil
-		}
-	}
-
-	// we are working with local FS
-	npMap := config.NodePathMap[node]
-	if npMap == nil {
-		npMap = config.NodePathMap[NodeDefaultNonListedNodes]
-		if npMap == nil {
-			return "", fmt.Errorf("config doesn't contain node %v, and no %v available", node, NodeDefaultNonListedNodes)
-		}
-		logrus.Debugf("config doesn't contain node %v, use %v instead", node, NodeDefaultNonListedNodes)
-	}
-	paths := npMap.Paths
-	if len(paths) == 0 {
-		return "", fmt.Errorf("no local path available on node %v", node)
-	}
-	// if a particular path was requested by storage class
-	if requestedPath != "" {
-		if _, ok := paths[requestedPath]; !ok {
-			return "", fmt.Errorf("config doesn't contain path %v on node %v", requestedPath, node)
-		}
-		return requestedPath, nil
-	}
-	// if no particular path was requested, choose a random one
-	i := rand.IntN(len(paths))
-	for p := range paths {
-		if i == 0 {
-			return p, nil
-		}
-		i--
-	}
-	return "", fmt.Errorf("failed to select a random path: no path selected from %d candidates", len(paths))
-}
-
-func (c *LocalPathCsiController) pickConfig(storageClassName string) (*StorageClassConfig, error) {
-	if len(c.config.StorageClassConfigs) == 0 {
-		return &c.config.StorageClassConfig, nil
-	}
-	cfg, ok := c.config.StorageClassConfigs[storageClassName]
-	if !ok {
-		return nil, fmt.Errorf("BUG: Got request for unexpected storage class %s", storageClassName)
-	}
-	return &cfg, nil
-}
-
-func (c *LocalPathCsiController) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to getPathAndNodeForPV %v", pv.Name)
-	}()
-
-	volumeSource := pv.Spec.PersistentVolumeSource
-	if volumeSource.HostPath != nil && volumeSource.Local == nil {
-		path = volumeSource.HostPath.Path
-	} else if volumeSource.Local != nil && volumeSource.HostPath == nil {
-		path = volumeSource.Local.Path
-	} else {
-		return "", "", fmt.Errorf("no path set")
-	}
-
-	if cfg != nil {
-		sharedFS, err := c.isSharedFilesystem(cfg)
-		if err != nil {
-			return "", "", err
-		}
-
-		if sharedFS {
-			// We don't have affinity and can use any node
-			return path, "", nil
-		}
-	}
-
-	// Dealing with local filesystem
-
-	nodeAffinity := pv.Spec.NodeAffinity
-	if nodeAffinity == nil {
-		return "", "", fmt.Errorf("no NodeAffinity set")
-	}
-	required := nodeAffinity.Required
-	if required == nil {
-		return "", "", fmt.Errorf("no NodeAffinity.Required set")
-	}
-
-	node = ""
-	for _, selectorTerm := range required.NodeSelectorTerms {
-		for _, expression := range selectorTerm.MatchExpressions {
-			if expression.Operator == v1.NodeSelectorOpIn {
-				if len(expression.Values) != 1 {
-					return "", "", fmt.Errorf("multiple values for the node affinity")
-				}
-				node = expression.Values[0]
-				break
-			}
-		}
-		if node != "" {
-			break
-		}
-	}
-	if node == "" {
-		return "", "", fmt.Errorf("cannot find affinited node")
-	}
-	return path, node, nil
 }
 
 func addVolumeMount(mounts *[]v1.VolumeMount, name, mountPath string) *v1.VolumeMount {
