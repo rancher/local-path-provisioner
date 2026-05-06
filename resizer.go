@@ -44,9 +44,12 @@ func (r *LocalPathResizer) CanSupport(pv *v1.PersistentVolume, pvc *v1.Persisten
 }
 
 func (r *LocalPathResizer) Resize(pv *v1.PersistentVolume, requestSize resource.Quantity) (newSize resource.Quantity, fsResizeRequired bool, err error) {
-
 	logrus.Debugf("Resize reconciler for pv %q with request size %q", pv.Name, requestSize.String())
-	path, node, err := r.getPathAndNodeForPV(pv, nil)
+	cfg, err := r.pickConfig(pv.Spec.StorageClassName)
+	if err != nil {
+		return requestSize, false, err
+	}
+	path, node, err := r.getPathAndNodeForPV(pv, cfg)
 	if err != nil {
 		logrus.Errorf("failed to get path and node: %v", err)
 		return requestSize, false, err
@@ -71,7 +74,7 @@ func (r *LocalPathResizer) Resize(pv *v1.PersistentVolume, requestSize resource.
 		Mode:        *pv.Spec.VolumeMode,
 		SizeInBytes: requestSize.Value(),
 		Node:        node,
-	}, nil); err != nil {
+	}, cfg); err != nil {
 		return requestSize, false, err
 	}
 

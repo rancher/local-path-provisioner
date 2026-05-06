@@ -469,7 +469,7 @@ func (c *LocalPathCsiController) pickConfig(storageClassName string) (*StorageCl
 
 func (c *LocalPathCsiController) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg *StorageClassConfig) (path, node string, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
+		err = errors.Wrapf(err, "failed to getPathAndNodeForPV %v", pv.Name)
 	}()
 
 	volumeSource := pv.Spec.PersistentVolumeSource
