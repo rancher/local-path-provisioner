@@ -6,7 +6,7 @@ resources:
 patches:
 - path: patch.yaml
 images:
-- name: rancher/local-path-provisioner
+- name: docker.io/rancher/local-path-provisioner
   newTag: dev
 labels:
 - includeSelectors: true

@@ -301,7 +301,7 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 	var cmds []string
 	for _, image := range images {
 		if len(image) > 0 {
-			cmds = append(cmds, fmt.Sprintf("kustomize edit set image %s", image))
+			cmds = append(cmds, fmt.Sprintf("kustomize edit set image docker.io/rancher/local-path-provisioner=%s", image))
 		}
 	}
 
