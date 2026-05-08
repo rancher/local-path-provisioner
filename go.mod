@@ -1,6 +1,6 @@
 module github.com/rancher/local-path-provisioner
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/kelseyhightower/envconfig v1.4.0
