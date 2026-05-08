@@ -71,8 +71,6 @@ func validateHelperPodTemplate(p *v1.Pod, allowUnsafe bool) error {
 		{p.Spec.HostNetwork || p.Spec.HostPID || p.Spec.HostIPC, "enable host namespaces"},
 		{p.Spec.NodeName != "", "set spec.nodeName"},
 		{p.Spec.ServiceAccountName != "", "set spec.serviceAccountName"},
-		{p.Spec.SecurityContext != nil, "set pod securityContext"},
-		{container.SecurityContext != nil, "set container securityContext"},
 		{len(container.VolumeMounts) > 0, "define custom volumeMounts"},
 		{len(container.EnvFrom) > 0, "define envFrom"},
 		{container.Lifecycle != nil, "define container lifecycle hooks"},
@@ -87,6 +85,34 @@ func validateHelperPodTemplate(p *v1.Pod, allowUnsafe bool) error {
 	}
 	for _, env := range container.Env {
 		if err := forbid(env.ValueFrom != nil, fmt.Sprintf("define env.valueFrom (env %q)", env.Name)); err != nil {
+			return err
+		}
+	}
+
+	// Validate pod securityContext: block dangerous fields,
+	// but allow hardening fields (runAsNonRoot, fsGroup, seccompProfile, etc.)
+	if psc := p.Spec.SecurityContext; psc != nil {
+		if err := forbid(psc.RunAsUser != nil && *psc.RunAsUser == 0, "set pod runAsUser to 0 (root)"); err != nil {
+			return err
+		}
+		if err := forbid(psc.RunAsGroup != nil && *psc.RunAsGroup == 0, "set pod runAsGroup to 0 (root)"); err != nil {
+			return err
+		}
+		if err := forbid(len(psc.Sysctls) > 0, "define sysctls"); err != nil {
+			return err
+		}
+	}
+
+	// Validate container securityContext: block privilege escalation fields,
+	// but allow hardening fields (runAsNonRoot, readOnlyRootFilesystem, etc.)
+	if sc := container.SecurityContext; sc != nil {
+		if err := forbid(sc.Privileged != nil && *sc.Privileged, "set privileged: true"); err != nil {
+			return err
+		}
+		if err := forbid(sc.Capabilities != nil && len(sc.Capabilities.Add) > 0, "add capabilities"); err != nil {
+			return err
+		}
+		if err := forbid(sc.AllowPrivilegeEscalation != nil && *sc.AllowPrivilegeEscalation, "set allowPrivilegeEscalation: true"); err != nil {
 			return err
 		}
 	}

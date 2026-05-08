@@ -45,7 +45,7 @@ spec:
     securityContext:
       privileged: true
 `,
-			wantErr: "must not set container securityContext",
+			wantErr: "must not set privileged: true",
 		},
 		"custom volumes are rejected by default": {
 			helperPodYAML: `
@@ -151,7 +151,23 @@ spec:
 `,
 			wantErr: "must not set spec.serviceAccountName",
 		},
-		"pod securityContext is rejected by default": {
+		"pod securityContext for hardening is accepted": {
+			helperPodYAML: `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  containers:
+  - name: helper-pod
+    image: busybox
+`,
+		},
+		"pod securityContext runAsUser 0 is rejected": {
 			helperPodYAML: `
 apiVersion: v1
 kind: Pod
@@ -164,7 +180,90 @@ spec:
   - name: helper-pod
     image: busybox
 `,
-			wantErr: "must not set pod securityContext",
+			wantErr: "must not set pod runAsUser to 0 (root)",
+		},
+		"pod securityContext runAsGroup 0 is rejected": {
+			helperPodYAML: `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  securityContext:
+    runAsGroup: 0
+  containers:
+  - name: helper-pod
+    image: busybox
+`,
+			wantErr: "must not set pod runAsGroup to 0 (root)",
+		},
+		"pod securityContext sysctls is rejected": {
+			helperPodYAML: `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  securityContext:
+    sysctls:
+    - name: net.ipv4.ip_forward
+      value: "1"
+  containers:
+  - name: helper-pod
+    image: busybox
+`,
+			wantErr: "must not define sysctls",
+		},
+		"container securityContext for hardening is accepted": {
+			helperPodYAML: `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  containers:
+  - name: helper-pod
+    image: busybox
+    securityContext:
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+`,
+		},
+		"capabilities add is rejected by default": {
+			helperPodYAML: `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  containers:
+  - name: helper-pod
+    image: busybox
+    securityContext:
+      capabilities:
+        add:
+        - SYS_ADMIN
+`,
+			wantErr: "must not add capabilities",
+		},
+		"allowPrivilegeEscalation true is rejected by default": {
+			helperPodYAML: `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: helper-pod
+spec:
+  containers:
+  - name: helper-pod
+    image: busybox
+    securityContext:
+      allowPrivilegeEscalation: true
+`,
+			wantErr: "must not set allowPrivilegeEscalation: true",
 		},
 		"multiple containers are rejected by default": {
 			helperPodYAML: `
