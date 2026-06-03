@@ -101,6 +101,24 @@ nodePathMap:
 
 podAnnotations: {}
 
+# seLinuxNodeSetup deploys a privileged DaemonSet that labels storage paths
+# with the correct SELinux context so that helper pods can write to them.
+# Required on SELinux-enforcing nodes (e.g. RKE2 on RHEL/SUSE) where the
+# provisioner paths under /opt/local-path-provisioner would otherwise be
+# inaccessible to containers (AVC denial on write/create).
+seLinuxNodeSetup:
+  enabled: false
+  image:
+    repository: busybox
+    tag: latest
+    pullPolicy: IfNotPresent
+  # SELinux type to apply to each path. container_file_t allows any
+  # container process to read and write the labeled directory.
+  seLinuxType: container_file_t
+  # Paths to label. Should match the paths configured in nodePathMap.
+  paths:
+    - /opt/local-path-provisioner
+
 podSecurityContext: {}
   # runAsNonRoot: true
 
