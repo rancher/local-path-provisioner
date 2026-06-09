@@ -1,148 +1,64 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"sync"
+	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestStartHealthServer(t *testing.T) {
+func TestHealthHandler(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		port           int
-		waitForReady   time.Duration
-		requestTimeout time.Duration
-		wantErr        string
+		method string
+		body   string
+		code   int
 	}{
-		"starts on default port 8080": {
-			port:           DefaultHealthPort,
-			waitForReady:   100 * time.Millisecond,
-			requestTimeout: 5 * time.Second,
-		},
-		"starts on custom port": {
-			port:           9090,
-			waitForReady:   100 * time.Millisecond,
-			requestTimeout: 5 * time.Second,
-		},
-		"starts on port 8081": {
-			port:           8081,
-			waitForReady:   100 * time.Millisecond,
-			requestTimeout: 5 * time.Second,
-		},
+		"GET /health":   {method: http.MethodGet, body: "OK", code: http.StatusOK},
+		"HEAD /health":  {method: http.MethodHead, body: "", code: http.StatusOK},
+		"OPTIONS /health": {method: http.MethodOptions, body: "", code: http.StatusOK},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+			req := httptest.NewRequest(tt.method, "/health", nil)
+			w := httptest.NewRecorder()
 
-			ctx, cancelFn := context.WithCancel(context.TODO())
-			defer cancelFn()
+			healthHandler(w, req)
 
-			var wg sync.WaitGroup
-			wg.Add(1)
+			resp := w.Result()
+			defer resp.Body.Close()
 
-			go func() {
-				defer wg.Done()
-				startHealthServer(ctx, tt.port)
-			}()
+			require.Equal(t, tt.code, resp.StatusCode)
 
-			time.Sleep(tt.waitForReady)
-
-			address := fmt.Sprintf("localhost:%d", tt.port)
-			conn, err := net.DialTimeout("tcp", address, tt.requestTimeout)
-			if tt.wantErr == "" {
+			if tt.body != "" {
+				body, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				require.NotNil(t, conn)
-				conn.Close()
-			} else {
-				require.Error(t, err)
-				require.Nil(t, conn)
+				require.Equal(t, tt.body, string(body))
 			}
-
-			cancelFn()
-			wg.Wait()
 		})
 	}
 }
 
-func TestHealthEndpoint(t *testing.T) {
+func TestHealthHandler_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancelFn := context.WithCancel(context.TODO())
-	defer cancelFn()
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			req := httptest.NewRequest(method, "/health", nil)
+			w := httptest.NewRecorder()
 
-	go func() {
-		defer wg.Done()
-		startHealthServer(ctx, 8082)
-	}()
+			healthHandler(w, req)
 
-	time.Sleep(100 * time.Millisecond)
+			resp := w.Result()
+			defer resp.Body.Close()
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
+			require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+		})
 	}
-
-	resp, err := client.Get("http://localhost:8082/health")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "OK", string(bodyBytes))
-}
-
-func TestHealthEndpointMultipleRequests(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancelFn := context.WithCancel(context.TODO())
-	defer cancelFn()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-		startHealthServer(ctx, 8083)
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	numRequests := 10
-	var mu sync.Mutex
-	successCount := 0
-
-	var requestWg sync.WaitGroup
-	for i := 0; i < numRequests; i++ {
-		requestWg.Add(1)
-		go func() {
-			defer requestWg.Done()
-			resp, err := client.Get("http://localhost:8083/health")
-			if err == nil && resp.StatusCode == http.StatusOK {
-				mu.Lock()
-				successCount++
-				mu.Unlock()
-				resp.Body.Close()
-			}
-		}()
-	}
-
-	requestWg.Wait()
-	require.Equal(t, numRequests, successCount)
 }
