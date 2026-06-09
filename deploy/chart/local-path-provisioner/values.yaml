@@ -198,3 +198,30 @@ debug: false
 
 # Extra arguments to pass to the CLI
 extraArgs: []
+
+# Health check configuration
+# To disable health checks, set health.enabled to false
+health:
+  enabled: true
+  port: 8080
+  # Full probe definitions can be overridden here
+  # The following defaults will be used if not overridden:
+  startupProbe:
+    httpGet:
+      path: /health
+      port: health
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 12
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: health
+    initialDelaySeconds: 5
+    periodSeconds: 5
