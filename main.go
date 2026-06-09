@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -53,6 +54,9 @@ var (
 	EnvAllowUnsafeHelperPodTemplate  = "ALLOW_UNSAFE_HELPER_POD_TEMPLATE"
 	FlagKubeClientBurst              = "kube-client-burst"
 	FlagKubeClientQPS                = "kube-client-qps"
+	FlagHealthPort                   = "health-port"
+	EnvHealthPort                    = "HEALTH_PORT"
+	DefaultHealthPort                = 8080
 )
 
 func cmdNotFound(_ *cli.Context, command string) {
@@ -151,6 +155,12 @@ func StartCmd() cli.Command {
 				Usage: "QPS value for kubernetes client.",
 				Value: float64(rest.DefaultQPS),
 			},
+			cli.IntFlag{
+				Name:   FlagHealthPort,
+				Usage:  "Port for the health server to serve on",
+				EnvVar: EnvHealthPort,
+				Value:  DefaultHealthPort,
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := startDaemon(c); err != nil {
@@ -205,6 +215,9 @@ func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace, conf
 func startDaemon(c *cli.Context) error {
 	ctx, cancelFn := context.WithCancel(context.TODO())
 	RegisterShutdownChannel(cancelFn)
+
+	healthPort := c.Int(FlagHealthPort)
+	startHealthServer(ctx, healthPort)
 
 	config, err := loadConfig(c.String(FlagKubeconfig))
 	if err != nil {
@@ -338,4 +351,21 @@ func main() {
 	if err := a.Run(os.Args); err != nil {
 		logrus.Fatalf("Critical error: %v", err)
 	}
+}
+
+func startHealthServer(ctx context.Context, port int) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	address := fmt.Sprintf(":%d", port)
+	go func() {
+		if err := http.ListenAndServe(address, mux); err != nil {
+			logrus.Errorf("Failed to start health server: %v", err)
+		}
+	}()
+
+	logrus.Infof("Health server started on %s", address)
 }

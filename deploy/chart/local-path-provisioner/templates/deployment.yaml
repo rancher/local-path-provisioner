@@ -86,8 +86,30 @@ spec:
                   fieldPath: metadata.namespace
             - name: CONFIG_MOUNT_PATH
               value: /etc/config/
+            {{- if and .Values.health.enabled .Values.health.port }}
+            - name: HEALTH_PORT
+              value: {{ .Values.health.port | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+         {{- if .Values.health.enabled }}
+          ports:
+            - name: health
+              containerPort: {{ .Values.health.port | default 8080 }}
+              protocol: TCP
+          {{- if .Values.health.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.health.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.health.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.health.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.health.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.health.readinessProbe | nindent 12 }}
+          {{- end }}
+        {{- end }}
       volumes:
         - name: config-volume
           configMap:
