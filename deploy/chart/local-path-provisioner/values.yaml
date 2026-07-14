@@ -58,6 +58,15 @@ storageClass:
   ## Set a path pattern, if unset the default will be used
   # pathPattern: "{{ .PVC.Namespace }}-{{ .PVC.Name }}"
 
+  ## Set a user pattern
+  userPattern: ''
+
+  ## Set a group pattern
+  groupPattern: ''
+
+  ## Set a permission pattern
+  permPattern: ''
+
 # nodePathMap is the place user can customize where to store the data on each node.
 # 1. If one node is not listed on the nodePathMap, and Kubernetes wants to create volume on it, the paths specified in
 #    DEFAULT_PATH_FOR_NON_LISTED_NODES will be used for provisioning.

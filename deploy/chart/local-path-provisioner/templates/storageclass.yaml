@@ -27,9 +27,20 @@ allowVolumeExpansion: true
 allowedTopologies:
 {{ toYaml $values.storageClass.allowedTopologies | indent 0 }}
 {{- end }}
-{{- if $values.storageClass.pathPattern }}
+{{- if or $values.storageClass.pathPattern $values.storageClass.userPattern $values.storageClass.groupPattern $values.storageClass.permPattern }}
 parameters:
+  {{- if $values.storageClass.pathPattern }}
   pathPattern: {{ $values.storageClass.pathPattern | quote }}
+  {{- end }}
+  {{- if $values.storageClass.userPattern }}
+  userPattern: {{ $values.storageClass.userPattern | quote }}
+  {{- end }}
+  {{- if $values.storageClass.groupPattern }}
+  groupPattern: {{ $values.storageClass.groupPattern | quote }}
+  {{- end }}
+  {{- if $values.storageClass.permPattern }}
+  permPattern: {{ $values.storageClass.permPattern | quote }}
+  {{- end }}
 {{- end }}
 {{- end }}
 ---
