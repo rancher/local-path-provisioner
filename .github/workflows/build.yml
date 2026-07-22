@@ -16,7 +16,7 @@ jobs:
       id-token: write
     steps:
     - name: Checkout Codes
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     # Build binaries
     - name: Run CI
@@ -43,7 +43,7 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/heads/') || startsWith(github.ref, 'refs/tags/') }}
     steps:
     - name: Checkout Codes
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Download Binaries
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
