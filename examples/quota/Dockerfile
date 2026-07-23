@@ -1,3 +1,3 @@
-From centos:7
+From centos:8
 RUN yum install -y xfsprogs
 
