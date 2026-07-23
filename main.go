@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -53,6 +54,9 @@ var (
 	EnvAllowUnsafeHelperPodTemplate  = "ALLOW_UNSAFE_HELPER_POD_TEMPLATE"
 	FlagKubeClientBurst              = "kube-client-burst"
 	FlagKubeClientQPS                = "kube-client-qps"
+	FlagHealthPort                   = "health-port"
+	EnvHealthPort                    = "HEALTH_PORT"
+	DefaultHealthPort                = 8080
 )
 
 func cmdNotFound(_ *cli.Context, command string) {
@@ -151,6 +155,12 @@ func StartCmd() cli.Command {
 				Usage: "QPS value for kubernetes client.",
 				Value: float64(rest.DefaultQPS),
 			},
+			cli.IntFlag{
+				Name:   FlagHealthPort,
+				Usage:  "Port for the health server to serve on",
+				EnvVar: EnvHealthPort,
+				Value:  DefaultHealthPort,
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := startDaemon(c); err != nil {
@@ -230,6 +240,9 @@ func startDaemon(c *cli.Context) error {
 	if configMapName == "" {
 		return fmt.Errorf("invalid empty flag %v", FlagConfigMapName)
 	}
+
+	healthPort := c.Int(FlagHealthPort)
+	startHealthServer(ctx, healthPort, kubeClient, namespace)
 	configFile := c.String(FlagConfigFile)
 	if configFile == "" {
 		configFile, err = findConfigFileFromConfigMap(kubeClient, namespace, configMapName, DefaultConfigFileKey)
@@ -338,4 +351,78 @@ func main() {
 	if err := a.Run(os.Args); err != nil {
 		logrus.Fatalf("Critical error: %v", err)
 	}
+}
+
+func startHealthServer(ctx context.Context, port int, kubeClient clientset.Interface, namespace string) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		readyHandler(ctx, kubeClient, namespace, w, r)
+	})
+
+	address := fmt.Sprintf(":%d", port)
+	go func() {
+		if err := http.ListenAndServe(address, mux); err != nil {
+			logrus.Errorf("Failed to start health server: %v", err)
+		}
+	}()
+
+	logrus.Infof("Health server started on %s", address)
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
+func readyHandler(ctx context.Context, kubeClient clientset.Interface, namespace string, w http.ResponseWriter, r *http.Request) {
+	err := checkReadiness(ctx, kubeClient, namespace)
+	if err != nil {
+		logrus.Warnf("Readiness check failed: %v", err)
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Ready"))
+}
+
+func checkReadiness(ctx context.Context, kubeClient clientset.Interface, namespace string) error {
+	tests := []struct {
+		name   string
+		check  func(context.Context) error
+	}{
+		{"configmaps", func(ctx context.Context) error {
+			_, err := kubeClient.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+			return err
+		}},
+		{"pods", func(ctx context.Context) error {
+			_, err := kubeClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+			return err
+		}},
+		{"persistentvolumeclaims", func(ctx context.Context) error {
+			_, err := kubeClient.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+			return err
+		}},
+		{"persistentvolumes", func(ctx context.Context) error {
+			_, err := kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{Limit: 1})
+			return err
+		}},
+		{"storageclasses", func(ctx context.Context) error {
+			_, err := kubeClient.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{Limit: 1})
+			return err
+		}},
+	}
+
+	for _, test := range tests {
+		if err := test.check(ctx); err != nil {
+			return fmt.Errorf("readiness check %s failed: %w", test.name, err)
+		}
+	}
+
+	return nil
 }
