@@ -12,7 +12,7 @@ require (
 	k8s.io/apimachinery v0.33.2
 	k8s.io/client-go v0.33.2
 	k8s.io/klog/v2 v2.130.1
-	sigs.k8s.io/sig-storage-lib-external-provisioner/v11 v11.0.1
+	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.0
 	sigs.k8s.io/yaml v1.5.0
 )
 
