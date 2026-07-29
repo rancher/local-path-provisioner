@@ -344,7 +344,7 @@ func dataFromPattern(pattern string, opts pvController.ProvisionOptions) (string
 		PVC:    opts.PVC.ObjectMeta,
 	}
 
-	tpl, err := template.New("dataPattern").Parse(pattern)
+	tpl, err := template.New("dataPattern").Option("missingkey=error").Parse(pattern)
 	if err != nil {
 		return "", err
 	}
@@ -355,7 +355,7 @@ func dataFromPattern(pattern string, opts pvController.ProvisionOptions) (string
 		return "", err
 	}
 
-	return buf.String(), nil
+	return strings.TrimSpace(buf.String()), nil
 }
 
 func (p *LocalPathProvisioner) Provision(_ context.Context, opts pvController.ProvisionOptions) (*v1.PersistentVolume, pvController.ProvisioningState, error) {
