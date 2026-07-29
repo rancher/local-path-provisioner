@@ -237,9 +237,9 @@ The scripts receive their input as environment variables:
 | `VOL_DIR` | Volume directory that should be created or removed. |
 | `VOL_MODE` | The PersistentVolume mode (`Block` or `Filesystem`). |
 | `VOL_SIZE_BYTES` | Requested volume size in bytes. |
-| `VOL_USER` | The user assigned from `userPattern` |
-| `VOL_GROUP` | The group assigned from `groupPattern` |
-| `VOL_PERM` | The permissions assigned from `permPattern` |
+| `VOL_USER` | User rendered from `userPattern`. |
+| `VOL_GROUP` | Group rendered from `groupPattern`. |
+| `VOL_PERM` | Permissions rendered from `permPattern`. |
 
 #### Reloading
 

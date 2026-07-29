@@ -69,7 +69,7 @@ storageClass:
   ## Set a group pattern
   groupPattern: ''
 
-  ## Set a permission pattern
+  ## Set a permission pattern (string). Quote numeric modes to preserve leading zeros (e.g. '0700').
   permPattern: ''
 
 # nodePathMap is the place user can customize where to store the data on each node.
