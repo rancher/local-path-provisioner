@@ -1,2 +1,2 @@
-FROM almalinux:8
+FROM almalinux:10
 RUN yum install -y xfsprogs
