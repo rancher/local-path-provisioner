@@ -115,6 +115,9 @@ hostUsers: true
 networkPolicy:
   # -- Specifies whether the networkPolicy should be created.
   enabled: false
+  # -- The policy types to enforce.
+  policyTypes:
+  - Egress
   # -- The ingress traffic
   # Should match the health and (optionally) metrics port
   ingress: []
