@@ -1,0 +1,13 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-perm-pattern
+provisioner: rancher.io/local-path
+parameters:
+  nodePath: /opt/local-path-provisioner
+  pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}/"
+  userPattern: "1000"
+  groupPattern: "2000"
+  permPattern: "0700"
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete

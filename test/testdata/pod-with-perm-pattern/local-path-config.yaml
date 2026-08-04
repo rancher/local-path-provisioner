@@ -1,0 +1,25 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+data:
+  config.json: |-
+    {
+            "storageClassConfigs":{
+                   "local-path-perm-pattern": {
+                          "nodePathMap": [
+                          {
+                                  "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                                  "paths":["/opt/local-path-provisioner"]
+                          }
+                          ]
+                   }
+            }
+    }
+  setup: |-
+    #!/bin/sh
+    set -eu
+    mkdir -m 0777 -p "$VOL_DIR"
+    chown "${VOL_USER}:${VOL_GROUP}" "$VOL_DIR"
+    chmod "${VOL_PERM}" "$VOL_DIR"
