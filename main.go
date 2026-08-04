@@ -11,7 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -59,11 +59,11 @@ var (
 	DefaultHealthPort                = 8080
 )
 
-func cmdNotFound(_ *cli.Context, command string) {
+func cmdNotFound(_ context.Context, _ *cli.Command, command string) {
 	panic(fmt.Errorf("unrecognized command: %s", command))
 }
 
-func onUsageError(_ *cli.Context, err error, _ bool) error {
+func onUsageError(_ context.Context, _ *cli.Command, err error, _ bool) error {
 	panic(errors.Wrap(err, "Usage error, please check your command"))
 }
 
@@ -77,95 +77,96 @@ func RegisterShutdownChannel(cancelFn context.CancelFunc) {
 	}()
 }
 
-func StartCmd() cli.Command {
-	return cli.Command{
+func StartCmd() *cli.Command {
+	return &cli.Command{
 		Name: "start",
 		Flags: []cli.Flag{
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagConfigFile,
 				Usage: "Required. Provisioner configuration file.",
 				Value: "",
 			},
-			cli.StringFlag{
-				Name:   FlagProvisionerName,
-				Usage:  "Required. Specify Provisioner name.",
-				EnvVar: EnvProvisionerName,
-				Value:  DefaultProvisionerName,
+			&cli.StringFlag{
+				Name:    FlagProvisionerName,
+				Usage:   "Required. Specify Provisioner name.",
+				Sources: cli.EnvVars(EnvProvisionerName),
+				Value:   DefaultProvisionerName,
 			},
-			cli.StringFlag{
-				Name:   FlagNamespace,
-				Usage:  "Required. The namespace that Provisioner is running in",
-				EnvVar: EnvNamespace,
-				Value:  DefaultNamespace,
+			&cli.StringFlag{
+				Name:    FlagNamespace,
+				Usage:   "Required. The namespace that Provisioner is running in",
+				Sources: cli.EnvVars(EnvNamespace),
+				Value:   DefaultNamespace,
 			},
-			cli.StringFlag{
-				Name:   FlagHelperImage,
-				Usage:  "Required. The helper image used for create/delete directories on the host",
-				EnvVar: EnvHelperImage,
-				Value:  DefaultHelperImage,
+			&cli.StringFlag{
+				Name:    FlagHelperImage,
+				Usage:   "Required. The helper image used for create/delete directories on the host",
+				Sources: cli.EnvVars(EnvHelperImage),
+				Value:   DefaultHelperImage,
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagKubeconfig,
 				Usage: "Paths to a kubeconfig. Only required when it is out-of-cluster.",
 				Value: "",
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagConfigMapName,
 				Usage: "Required. Specify configmap name.",
 				Value: DefaultConfigMapName,
 			},
-			cli.StringFlag{
-				Name:   FlagServiceAccountName,
-				Usage:  "Required. The ServiceAccountName for deployment",
-				EnvVar: EnvServiceAccountName,
-				Value:  DefaultServiceAccount,
+			&cli.StringFlag{
+				Name:    FlagServiceAccountName,
+				Usage:   "Required. The ServiceAccountName for deployment",
+				Sources: cli.EnvVars(EnvServiceAccountName),
+				Value:   DefaultServiceAccount,
 			},
-			cli.StringFlag{
+			&cli.StringFlag{
 				Name:  FlagHelperPodFile,
 				Usage: "Paths to the Helper pod yaml file",
 				Value: "",
 			},
-			cli.IntFlag{
+			&cli.IntFlag{
 				Name:  FlagWorkerThreads,
 				Usage: "Number of provisioner worker threads.",
 				Value: DefaultWorkerThreads,
 			},
-			cli.IntFlag{
+			&cli.IntFlag{
 				Name:  FlagProvisioningRetryCount,
 				Usage: "Number of retries of failed volume provisioning. 0 means retry indefinitely.",
 				Value: DefaultProvisioningRetryCount,
 			},
-			cli.IntFlag{
+			&cli.IntFlag{
 				Name:  FlagDeletionRetryCount,
 				Usage: "Number of retries of failed volume deletion. 0 means retry indefinitely.",
 				Value: DefaultDeletionRetryCount,
 			},
-			cli.BoolFlag{
-				Name:   FlagAllowUnsafeHelperPodTemplate,
-				Usage:  "Allow helper pod templates to set unsafe pod fields such as securityContext or custom volumes.",
-				EnvVar: EnvAllowUnsafeHelperPodTemplate,
+			&cli.BoolFlag{
+				Name:    FlagAllowUnsafeHelperPodTemplate,
+				Usage:   "Allow helper pod templates to set unsafe pod fields such as securityContext or custom volumes.",
+				Sources: cli.EnvVars(EnvAllowUnsafeHelperPodTemplate),
 			},
-			cli.IntFlag{
+			&cli.IntFlag{
 				Name:  FlagKubeClientBurst,
 				Usage: "Burst value for kubernetes client.",
 				Value: rest.DefaultBurst,
 			},
-			cli.Float64Flag{
+			&cli.FloatFlag{
 				Name:  FlagKubeClientQPS,
 				Usage: "QPS value for kubernetes client.",
 				Value: float64(rest.DefaultQPS),
 			},
-			cli.IntFlag{
-				Name:   FlagHealthPort,
-				Usage:  "Port for the health server to serve on",
-				EnvVar: EnvHealthPort,
-				Value:  DefaultHealthPort,
+			&cli.IntFlag{
+				Name:    FlagHealthPort,
+				Usage:   "Port for the health server to serve on",
+				Sources: cli.EnvVars(EnvHealthPort),
+				Value:   DefaultHealthPort,
 			},
 		},
-		Action: func(c *cli.Context) {
+		Action: func(_ context.Context, c *cli.Command) error {
 			if err := startDaemon(c); err != nil {
 				logrus.Fatalf("Error starting daemon: %v", err)
 			}
+			return nil
 		},
 	}
 }
@@ -212,7 +213,7 @@ func findConfigFileFromConfigMap(kubeClient clientset.Interface, namespace, conf
 	return value, nil
 }
 
-func startDaemon(c *cli.Context) error {
+func startDaemon(c *cli.Command) error {
 	ctx, cancelFn := context.WithCancel(context.TODO())
 	RegisterShutdownChannel(cancelFn)
 
@@ -221,7 +222,7 @@ func startDaemon(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get client config")
 	}
 	config.Burst = c.Int(FlagKubeClientBurst)
-	config.QPS = float32(c.Float64(FlagKubeClientQPS))
+	config.QPS = float32(c.Float(FlagKubeClientQPS))
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
@@ -324,31 +325,31 @@ func startDaemon(c *cli.Context) error {
 func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 
-	a := cli.NewApp()
-	a.Version = VERSION
-	a.Usage = "Local Path Provisioner"
-
-	a.Before = func(c *cli.Context) error {
-		if c.GlobalBool("debug") {
-			logrus.SetLevel(logrus.DebugLevel)
-		}
-		return nil
-	}
-
-	a.Flags = []cli.Flag{
-		cli.BoolFlag{
-			Name:   "debug, d",
-			Usage:  "enable debug logging level",
-			EnvVar: "RANCHER_DEBUG",
+	a := &cli.Command{
+		Version: VERSION,
+		Usage:   "Local Path Provisioner",
+		Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
+			if c.Bool("debug") {
+				logrus.SetLevel(logrus.DebugLevel)
+			}
+			return ctx, nil
 		},
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "debug",
+				Aliases: []string{"d"},
+				Usage:   "enable debug logging level",
+				Sources: cli.EnvVars("RANCHER_DEBUG"),
+			},
+		},
+		Commands: []*cli.Command{
+			StartCmd(),
+		},
+		CommandNotFound: cmdNotFound,
+		OnUsageError:    onUsageError,
 	}
-	a.Commands = []cli.Command{
-		StartCmd(),
-	}
-	a.CommandNotFound = cmdNotFound
-	a.OnUsageError = onUsageError
 
-	if err := a.Run(os.Args); err != nil {
+	if err := a.Run(context.Background(), os.Args); err != nil {
 		logrus.Fatalf("Critical error: %v", err)
 	}
 }
