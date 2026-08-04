@@ -17,8 +17,8 @@ func TestHealthHandler(t *testing.T) {
 		body   string
 		code   int
 	}{
-		"GET /health":   {method: http.MethodGet, body: "OK", code: http.StatusOK},
-		"HEAD /health":  {method: http.MethodHead, body: "", code: http.StatusOK},
+		"GET /health":     {method: http.MethodGet, body: "OK", code: http.StatusOK},
+		"HEAD /health":    {method: http.MethodHead, body: "", code: http.StatusOK},
 		"OPTIONS /health": {method: http.MethodOptions, body: "", code: http.StatusOK},
 	}
 
@@ -30,7 +30,7 @@ func TestHealthHandler(t *testing.T) {
 			healthHandler(w, req)
 
 			resp := w.Result()
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			require.Equal(t, tt.code, resp.StatusCode)
 
@@ -56,7 +56,7 @@ func TestHealthHandler_MethodNotAllowed(t *testing.T) {
 			healthHandler(w, req)
 
 			resp := w.Result()
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
 		})

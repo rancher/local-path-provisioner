@@ -377,7 +377,9 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	if _, err := w.Write([]byte("OK")); err != nil {
+		logrus.Warnf("Failed to write health response: %v", err)
+	}
 }
 
 func readyHandler(ctx context.Context, kubeClient clientset.Interface, namespace string, w http.ResponseWriter, r *http.Request) {
@@ -388,13 +390,15 @@ func readyHandler(ctx context.Context, kubeClient clientset.Interface, namespace
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Ready"))
+	if _, err := w.Write([]byte("Ready")); err != nil {
+		logrus.Warnf("Failed to write readiness response: %v", err)
+	}
 }
 
 func checkReadiness(ctx context.Context, kubeClient clientset.Interface, namespace string) error {
 	tests := []struct {
-		name   string
-		check  func(context.Context) error
+		name  string
+		check func(context.Context) error
 	}{
 		{"configmaps", func(ctx context.Context) error {
 			_, err := kubeClient.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{Limit: 1})
