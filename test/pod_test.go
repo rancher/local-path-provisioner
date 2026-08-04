@@ -43,6 +43,16 @@ func (p *PodTestSuite) SetupSuite() {
 	cmds := []string{
 		fmt.Sprintf("kind create cluster --config=%s --wait=120s", testdataFile("kind-cluster.yaml")),
 		fmt.Sprintf("kind load docker-image %s", p.config.IMAGE),
+		// kind ships its own local-path-provisioner: the "standard" default StorageClass and a
+		// "local-path-provisioner" Deployment in the "local-path-storage" namespace, both using
+		// the provisioner name "rancher.io/local-path" - identical to the provisioner under test.
+		// Since the provisioner runs without leader election, kind's built-in provisioner races
+		// the test-deployed provisioner and may provision volumes without the features under test
+		// (e.g. the custom nodeAffinityKey). Remove it so the test-deployed provisioner is the
+		// only one servicing "rancher.io/local-path" claims.
+		"kubectl -n local-path-storage delete deployment local-path-provisioner --ignore-not-found",
+		"kubectl -n local-path-storage wait --for=delete pod --all --timeout=120s || true",
+		"kubectl delete storageclass standard --ignore-not-found",
 	}
 	for _, cmd := range cmds {
 		_, err = runCmd(
