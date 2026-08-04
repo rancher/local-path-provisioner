@@ -216,6 +216,24 @@ func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 }
 
+func (p *PodTestSuite) TestPodWithUserGroupPermPattern() {
+	p.kustomizeDir = "pod-with-perm-pattern"
+	kustomizeDir := testdataFile(p.kustomizeDir)
+
+	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
+
+	// The storage class sets userPattern=1000, groupPattern=2000 and permPattern=0700,
+	// which the setup script applies to the volume directory via chown/chmod. Inspect the
+	// mounted directory from inside the pod to confirm the patterns took effect.
+	statCmd := "kubectl exec volume-test -- stat -c '%a %u %g' /data"
+	c := createCmd(p.T(), statCmd, kustomizeDir, p.config.envs(), nil)
+	output, err := c.CombinedOutput()
+	if err != nil {
+		p.FailNow("", "failed to stat volume dir", string(output), err)
+	}
+	p.Equal("700 1000 2000", strings.TrimSpace(string(output)), "volume dir should reflect user/group/perm patterns")
+}
+
 func (p *PodTestSuite) TestPodWithSkipPathPatternCheck() {
 	p.kustomizeDir = "skip-path-pattern-check"
 
