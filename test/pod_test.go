@@ -171,17 +171,27 @@ func (p *PodTestSuite) TestPodWithCustomNodeAffinityKey() {
 
 	runTest(p, []string{p.config.IMAGE}, "ready", hostPathVolumeType)
 
-	// Verify the PV was created with the custom node affinity key
-	affinityCmd := `kubectl get pv -o jsonpath='{.items[0].spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].key}'`
-	c := createCmd(p.T(), affinityCmd, kustomizeDir, p.config.envs(), nil)
+	// Resolve the PV bound to this test's PVC. The shared cluster may hold PVs
+	// from other tests, so selecting by index (.items[0]) is not reliable.
+	pvNameCmd := `kubectl get pvc local-path-pvc -o jsonpath='{.spec.volumeName}'`
+	c := createCmd(p.T(), pvNameCmd, kustomizeDir, p.config.envs(), nil)
 	output, err := c.CombinedOutput()
+	if err != nil {
+		p.FailNow("", "failed to get PV name", err)
+	}
+	pvName := strings.Trim(string(output), "'")
+
+	// Verify the PV was created with the custom node affinity key
+	affinityCmd := fmt.Sprintf(`kubectl get pv %s -o jsonpath='{.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].key}'`, pvName)
+	c = createCmd(p.T(), affinityCmd, kustomizeDir, p.config.envs(), nil)
+	output, err = c.CombinedOutput()
 	if err != nil {
 		p.FailNow("", "failed to get PV node affinity key", err)
 	}
 	p.Equal(customLabel, strings.Trim(string(output), "'"), "PV should use the custom node affinity key")
 
 	// Verify the affinity value matches what was set on the node
-	valueCmd := `kubectl get pv -o jsonpath='{.items[0].spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0]}'`
+	valueCmd := fmt.Sprintf(`kubectl get pv %s -o jsonpath='{.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0]}'`, pvName)
 	c = createCmd(p.T(), valueCmd, kustomizeDir, p.config.envs(), nil)
 	output, err = c.CombinedOutput()
 	if err != nil {
