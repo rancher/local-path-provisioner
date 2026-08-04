@@ -346,14 +346,33 @@ func runTest(p *PodTestSuite, images []string, waitCondition, volumeType string)
 		}
 	}
 
-	typeCheckCmd := fmt.Sprintf("kubectl get pv $(%s) -o jsonpath='{.spec.%s}'", "kubectl get pv -o jsonpath='{.items[0].metadata.name}'", volumeType)
-	c := createCmd(p.T(), typeCheckCmd, kustomizeDir, p.config.envs(), nil)
-	typeCheckOutput, err := c.CombinedOutput()
-	if err != nil {
-		p.FailNow("", "failed to check volume type: %v", err)
-	}
-	if len(typeCheckOutput) == 0 || !strings.Contains(string(typeCheckOutput), "path") {
-		p.FailNow("volume Type not correct")
+	// Verify a PV of the expected type was provisioned for this test. Resolve PVs through
+	// the PVCs that currently exist in the namespace rather than picking the first PV in
+	// the cluster (.items[0]), which on the shared cluster may be a leftover PV orphaned
+	// by a previous test. Retry to absorb the provisioning delay when the caller only
+	// waits for the pod to be scheduled.
+	typeCheckCmd := fmt.Sprintf(
+		"for pv in $(kubectl get pvc -o jsonpath='{.items[*].spec.volumeName}'); do kubectl get pv \"$pv\" -o jsonpath='{.spec.%s}'; echo; done",
+		volumeType,
+	)
+
+	var lastOutput string
+	deadline := time.After(120 * time.Second)
+	tick := time.Tick(2 * time.Second)
+	for {
+		c := createCmd(p.T(), typeCheckCmd, kustomizeDir, p.config.envs(), nil)
+		typeCheckOutput, err := c.CombinedOutput()
+		lastOutput = string(typeCheckOutput)
+		if err == nil && strings.Contains(lastOutput, "path") {
+			return
+		}
+
+		select {
+		case <-deadline:
+			p.FailNow("volume Type not correct", "got: %q", lastOutput)
+			return
+		case <-tick:
+		}
 	}
 }
 
