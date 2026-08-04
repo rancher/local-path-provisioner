@@ -4,6 +4,8 @@ kind: NetworkPolicy
 metadata:
   name: {{ printf "%s-network-policy" (include "local-path-provisioner.fullname" .) | trunc 63 | trimSuffix "-" }}
   namespace: {{ include "local-path-provisioner.namespace" . }}
+  labels:
+{{ include "local-path-provisioner.labels" . | indent 4 }}
 spec:
   egress:
     {{- with .Values.networkPolicy.egress }}
@@ -15,9 +17,8 @@ spec:
     {{- end }}
   podSelector:
     matchLabels:
-       app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
-       app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
   policyTypes:
-  - Egress
-  - Ingress
+    {{- toYaml .Values.networkPolicy.policyTypes | nindent 4 }}
 {{- end }}
