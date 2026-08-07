@@ -1,0 +1,51 @@
+{{- if .Values.seLinuxNodeSetup.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "local-path-provisioner.fullname" . }}-node-setup
+  namespace: {{ include "local-path-provisioner.namespace" . }}
+  labels:
+{{ include "local-path-provisioner.labels" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}-node-setup
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}-node-setup
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      initContainers:
+        - name: selinux-setup
+          image: "{{ .Values.seLinuxNodeSetup.image.repository }}:{{ .Values.seLinuxNodeSetup.image.tag }}"
+          imagePullPolicy: {{ .Values.seLinuxNodeSetup.image.pullPolicy }}
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              {{- range .Values.seLinuxNodeSetup.paths }}
+              mkdir -p /host{{ . }}
+              chcon -Rt {{ $.Values.seLinuxNodeSetup.seLinuxType }} /host{{ . }}
+              {{- end }}
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+      containers:
+        - name: pause
+          image: "{{ .Values.seLinuxNodeSetup.image.repository }}:{{ .Values.seLinuxNodeSetup.image.tag }}"
+          imagePullPolicy: {{ .Values.seLinuxNodeSetup.image.pullPolicy }}
+          command: ["sh", "-c", "trap 'exit 0' TERM; sleep infinity & wait"]
+          securityContext:
+            privileged: true
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+      tolerations:
+        - operator: Exists
+{{- end }}
