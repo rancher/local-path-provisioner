@@ -193,6 +193,8 @@ The helperPod is allowed to run on nodes experiencing disk pressure conditions, 
     1. If one node is listed but with `paths` set to `[]`, the provisioner will refuse to provision on this node.
     2. If more than one path was specified, the path would be chosen randomly when provisioning.
 
+Setting `paths` to `[]` prevents provisioning on a node, but does not prevent Kubernetes from scheduling consumer Pods there. With `WaitForFirstConsumer`, this can leave a PVC pending with a `no local path available on node` error. Use `nodeSelector` or required node affinity on the consumer Pod to select nodes with configured storage paths; see the [node affinity example](examples/pod-with-node-affinity/pod.yaml). Restricting the provisioner Deployment's scheduling does not restrict consumer Pods.
+
 `sharedFileSystemPath` allows the provisioner to use a filesystem that is mounted on all nodes at the same time.
 In this case all access modes are supported: `ReadWriteOnce`, `ReadOnlyMany` and `ReadWriteMany` for storage claims.
 
