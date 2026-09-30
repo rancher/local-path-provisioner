@@ -1,0 +1,86 @@
+{{- if .Values.selinuxNodeSetup.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "local-path-provisioner.fullname" . }}-node-setup
+  namespace: {{ include "local-path-provisioner.namespace" . }}
+  labels:
+{{ include "local-path-provisioner.labels" . | indent 4 }}
+    app.kubernetes.io/component: selinux-node-setup
+spec:
+  selector:
+    matchLabels:
+      # Deliberately distinct from the provisioner's app.kubernetes.io/name so
+      # that the Deployment and PodDisruptionBudget selectors do not match
+      # these pods.
+      app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}-node-setup
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: selinux-node-setup
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "local-path-provisioner.name" . }}-node-setup
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: selinux-node-setup
+        helm.sh/chart: {{ include "local-path-provisioner.chart" . }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        {{- if .Values.commonLabels }}
+{{ toYaml .Values.commonLabels | indent 8 }}
+        {{- end }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ template "local-path-provisioner.serviceAccountName" . }}
+      initContainers:
+        - name: selinux-setup
+        {{- if .Values.privateRegistry.registryUrl }}
+          image: "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.selinuxNodeSetup.image.repository }}:{{ .Values.selinuxNodeSetup.image.tag }}"
+        {{- else }}
+          image: "{{ .Values.selinuxNodeSetup.image.repository }}:{{ .Values.selinuxNodeSetup.image.tag }}"
+        {{- end }}
+          imagePullPolicy: {{ .Values.selinuxNodeSetup.image.pullPolicy }}
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          # BusyBox does not ship chcon, so run the host's own mkdir/chcon
+          # from a chroot into the node's root filesystem.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              {{- range .Values.selinuxNodeSetup.paths }}
+              chroot /host mkdir -p {{ . | quote }}
+              chroot /host chcon -Rt {{ $.Values.selinuxNodeSetup.selinuxType }} {{ . | quote }}
+              {{- end }}
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+      containers:
+        # Keeps the pod Running after the init container has done its work.
+        - name: pause
+        {{- if .Values.privateRegistry.registryUrl }}
+          image: "{{ .Values.privateRegistry.registryUrl }}/{{ .Values.selinuxNodeSetup.image.repository }}:{{ .Values.selinuxNodeSetup.image.tag }}"
+        {{- else }}
+          image: "{{ .Values.selinuxNodeSetup.image.repository }}:{{ .Values.selinuxNodeSetup.image.tag }}"
+        {{- end }}
+          imagePullPolicy: {{ .Values.selinuxNodeSetup.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - trap 'exit 0' TERM; while true; do sleep 3600 & wait $!; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+      tolerations:
+        - operator: Exists
+{{- end }}
