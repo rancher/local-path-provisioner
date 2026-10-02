@@ -1,6 +1,6 @@
 module github.com/rancher/local-path-provisioner
 
-go 1.26.3
+go 1.27.0
 
 require (
 	github.com/kelseyhightower/envconfig v1.4.0
@@ -15,8 +15,6 @@ require (
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v11 v11.0.1
 	sigs.k8s.io/yaml v1.5.0
 )
-
-require go.yaml.in/yaml/v2 v2.4.2 // indirect
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -47,6 +45,7 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
