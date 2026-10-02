@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.26.0
 
-FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS base
+FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine AS base
 
 ARG TARGETARCH
 
@@ -9,7 +9,7 @@ ENV GOFLAGS=-mod=vendor
 ENV KIND_VERSION=v0.32.0
 ENV KUBECTL_VERSION=v1.35.1
 ENV KUSTOMIZE_VERSION=v5.5.0
-ENV GOLANGCI_LINT_VERSION=v2.11.4
+ENV GOLANGCI_LINT_VERSION=v2.14.0
 
 RUN apk add --no-cache \
     bash \
