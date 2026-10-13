@@ -21,6 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 
 	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
@@ -374,6 +375,9 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 	if err != nil {
 		return nil, pvController.ProvisioningFinished, err
 	}
+	// If the same filesystem is mounted across all nodes, we don't need
+	// affinity, as path is accessible from any node
+	var nodeAffinity *v1.VolumeNodeAffinity
 	if !sharedFS {
 		if pvc.Spec.Selector != nil {
 			return nil, pvController.ProvisioningFinished, fmt.Errorf("claim.Spec.Selector is not supported")
@@ -385,6 +389,16 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		}
 		if node == nil {
 			return nil, pvController.ProvisioningFinished, fmt.Errorf("configuration error, no node was specified")
+		}
+		affinityKey := storageClass.Parameters["nodeAffinityKey"]
+		if affinityKey == "" {
+			affinityKey = DefaultNodeAffinityKey
+		}
+		// Resolve the affinity before the helper pod creates the volume directory,
+		// so a node that cannot be used is rejected without leaving anything behind.
+		nodeAffinity, err = nodeAffinityFor(node, affinityKey)
+		if err != nil {
+			return nil, pvController.ProvisioningReschedule, err
 		}
 	}
 
@@ -517,40 +531,6 @@ func (p *LocalPathProvisioner) provisionFor(opts pvController.ProvisionOptions, 
 		return nil, pvController.ProvisioningFinished, err
 	}
 
-	var nodeAffinity *v1.VolumeNodeAffinity
-	if sharedFS {
-		// If the same filesystem is mounted across all nodes, we don't need
-		// affinity, as path is accessible from any node
-		nodeAffinity = nil
-	} else {
-		affinityKey := DefaultNodeAffinityKey
-		if storageClass.Parameters != nil {
-			if key, ok := storageClass.Parameters["nodeAffinityKey"]; ok && key != "" {
-				affinityKey = key
-			}
-		}
-		valueNode, ok := node.GetLabels()[affinityKey]
-		if !ok {
-			valueNode = nodeName
-		}
-		nodeAffinity = &v1.VolumeNodeAffinity{
-			Required: &v1.NodeSelector{
-				NodeSelectorTerms: []v1.NodeSelectorTerm{
-					{
-						MatchExpressions: []v1.NodeSelectorRequirement{
-							{
-								Key:      affinityKey,
-								Operator: v1.NodeSelectorOpIn,
-								Values: []string{
-									valueNode,
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-	}
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -646,6 +626,62 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg 
 
 	// Dealing with local filesystem
 
+	key, value, err := nodeAffinityTermFromPV(pv)
+	if err != nil {
+		return "", "", err
+	}
+	if key == DefaultNodeAffinityKey {
+		return path, value, nil
+	}
+
+	// With a custom nodeAffinityKey the value is a node label, not a node name.
+	// Resolve it to the node currently carrying that label, which may have been
+	// recreated under a new name since the volume was provisioned.
+	nodes, err := p.kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set{key: value}.String(),
+	})
+	if err != nil {
+		return "", "", err
+	}
+	node, err = nodeForAffinity(nodes.Items, pv.Annotations[nodeNameAnnotationKey])
+	if err != nil {
+		return "", "", errors.Wrapf(err, "failed to resolve node for affinity %v=%v", key, value)
+	}
+	return path, node, nil
+}
+
+// nodeAffinityFor returns the node affinity pinning a volume to node through
+// the node's affinityKey label.
+func nodeAffinityFor(node *v1.Node, affinityKey string) (*v1.VolumeNodeAffinity, error) {
+	value, ok := node.GetLabels()[affinityKey]
+	if affinityKey != DefaultNodeAffinityKey && value == "" {
+		return nil, fmt.Errorf("node %v has no %v label required by the nodeAffinityKey StorageClass parameter", node.Name, affinityKey)
+	}
+	if !ok {
+		value = node.Name
+	}
+	return &v1.VolumeNodeAffinity{
+		Required: &v1.NodeSelector{
+			NodeSelectorTerms: []v1.NodeSelectorTerm{
+				{
+					MatchExpressions: []v1.NodeSelectorRequirement{
+						{
+							Key:      affinityKey,
+							Operator: v1.NodeSelectorOpIn,
+							Values: []string{
+								value,
+							},
+						},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+// nodeAffinityTermFromPV returns the key and value of the expression pinning
+// the PV to a node.
+func nodeAffinityTermFromPV(pv *v1.PersistentVolume) (key, value string, err error) {
 	nodeAffinity := pv.Spec.NodeAffinity
 	if nodeAffinity == nil {
 		return "", "", fmt.Errorf("no NodeAffinity set")
@@ -655,25 +691,38 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume, cfg 
 		return "", "", fmt.Errorf("no NodeAffinity.Required set")
 	}
 
-	node = ""
 	for _, selectorTerm := range required.NodeSelectorTerms {
 		for _, expression := range selectorTerm.MatchExpressions {
 			if expression.Operator == v1.NodeSelectorOpIn {
 				if len(expression.Values) != 1 {
 					return "", "", fmt.Errorf("multiple values for the node affinity")
 				}
-				node = expression.Values[0]
+				if expression.Values[0] != "" {
+					return expression.Key, expression.Values[0], nil
+				}
 				break
 			}
 		}
-		if node != "" {
-			break
+	}
+	return "", "", fmt.Errorf("cannot find affinited node")
+}
+
+// nodeForAffinity picks the node of a PV with a custom nodeAffinityKey from the
+// nodes carrying its affinity label. If none does, it falls back to
+// provisionedOn, the node the volume was created on, so the caller can check
+// whether that node still exists.
+func nodeForAffinity(matching []v1.Node, provisionedOn string) (string, error) {
+	switch len(matching) {
+	case 1:
+		return matching[0].Name, nil
+	case 0:
+		if provisionedOn == "" {
+			return "", fmt.Errorf("no node matches and no %v annotation set", nodeNameAnnotationKey)
 		}
+		return provisionedOn, nil
+	default:
+		return "", fmt.Errorf("%d nodes match, expected one", len(matching))
 	}
-	if node == "" {
-		return "", "", fmt.Errorf("cannot find affinited node")
-	}
-	return path, node, nil
 }
 
 type volumeOptions struct {

@@ -208,6 +208,31 @@ func (p *PodTestSuite) TestPodWithCustomNodeAffinityKey() {
 		p.FailNow("", "failed to get PV node affinity value", err)
 	}
 	p.Equal(customValue, strings.Trim(string(output), "'"), "PV node affinity value should match the custom label value")
+
+	// The affinity value is a label value rather than a node name, so deleting the
+	// volume must still resolve it to kind-worker and clean up the directory there.
+	pathCmd := fmt.Sprintf(`kubectl get pv %s -o jsonpath='{.spec.hostPath.path}'`, pvName)
+	c = createCmd(p.T(), pathCmd, kustomizeDir, p.config.envs(), nil)
+	output, err = c.CombinedOutput()
+	if err != nil {
+		p.FailNow("", "failed to get PV path", err)
+	}
+	volumePath := strings.Trim(string(output), "'")
+
+	cmds := []string{
+		fmt.Sprintf("docker exec kind-worker test -d %s", volumePath),
+		"kubectl delete pod volume-test",
+		"kubectl delete pvc local-path-pvc",
+		fmt.Sprintf("kubectl wait --for=delete pv/%s --timeout=120s", pvName),
+	}
+	for _, cmd := range cmds {
+		if _, err := runCmd(p.T(), cmd, kustomizeDir, p.config.envs(), nil); err != nil {
+			p.FailNow("", "failed to run command", cmd, err)
+		}
+	}
+
+	_, err = runCmd(p.T(), fmt.Sprintf("docker exec kind-worker test ! -e %s", volumePath), "", p.config.envs(), nil)
+	p.NoError(err, "volume directory should be removed from kind-worker after the PV is deleted")
 }
 
 func (p *PodTestSuite) TestPodWithCustomPathPatternStorageClasses() {
@@ -401,7 +426,7 @@ func testdataFile(fields ...string) string {
 func deleteKustomizeDeployment(t *testing.T, kustomizeDir string, envs []string) error {
 	_, err := runCmd(
 		t,
-		"kustomize build | kubectl delete --timeout=180s -f -",
+		"kustomize build | kubectl delete --timeout=180s --ignore-not-found -f -",
 		testdataFile(kustomizeDir),
 		envs,
 		nil,
