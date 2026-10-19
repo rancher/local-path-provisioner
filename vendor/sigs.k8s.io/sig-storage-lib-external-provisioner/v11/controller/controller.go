@@ -30,9 +30,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kubernetes-csi/csi-lib-utils/slowset"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1"
 	storagebeta "k8s.io/api/storage/v1beta1"
@@ -183,6 +186,10 @@ type ProvisionController struct {
 	volumeStore VolumeStore
 
 	volumeNameHook VolumeNameHook
+
+	slowSet *slowset.SlowSet
+
+	retryIntervalMax time.Duration
 }
 
 const (
@@ -216,6 +223,8 @@ const (
 	DefaultMetricsPath = "/metrics"
 	// DefaultAddFinalizer is used when option function AddFinalizer is omitted
 	DefaultAddFinalizer = false
+	// DefaultRetryIntervalMax is used when option function RetryIntervalMax is omitted
+	DefaultRetryIntervalMax = 5 * time.Minute
 )
 
 var errRuntime = fmt.Errorf("cannot call option functions after controller has Run")
@@ -451,6 +460,18 @@ func RetryPeriod(retryPeriod time.Duration) func(*ProvisionController) error {
 	}
 }
 
+// RetryIntervalMax is the maximum retry interval of failed provisioning or deletion.
+// Defaults to 5 minutes.
+func RetryIntervalMax(retryIntervalMax time.Duration) func(*ProvisionController) error {
+	return func(c *ProvisionController) error {
+		if c.HasRun() {
+			return errRuntime
+		}
+		c.retryIntervalMax = retryIntervalMax
+		return nil
+	}
+}
+
 // ClaimsInformer sets the informer to use for accessing PersistentVolumeClaims.
 // Defaults to using a internal informer.
 func ClaimsInformer(informer cache.SharedIndexInformer) func(*ProvisionController) error {
@@ -667,7 +688,10 @@ func NewProvisionController(
 		hasRun:                    false,
 		hasRunLock:                &sync.Mutex{},
 		volumeNameHook:            getProvisionedVolumeNameForClaim,
+		retryIntervalMax:          DefaultRetryIntervalMax,
 	}
+
+	controller.slowSet = slowset.NewSlowSet(controller.retryIntervalMax)
 
 	for _, option := range options {
 		err := option(controller)
@@ -839,6 +863,8 @@ func (ctrl *ProvisionController) Run(ctx context.Context) {
 		defer utilruntime.HandleCrash()
 		defer ctrl.claimQueue.ShutDown()
 		defer ctrl.volumeQueue.ShutDown()
+
+		go ctrl.slowSet.Run(ctx.Done())
 
 		ctrl.hasRunLock.Lock()
 		ctrl.hasRun = true
@@ -1083,6 +1109,10 @@ func (ctrl *ProvisionController) syncClaim(ctx context.Context, obj interface{})
 	claim, ok := obj.(*v1.PersistentVolumeClaim)
 	if !ok {
 		return fmt.Errorf("expected claim but got %+v", obj)
+	}
+
+	if err := ctrl.delayProvisioningIfRecentlyInfeasible(claim); err != nil {
+		return err
 	}
 
 	should, err := ctrl.shouldProvision(ctx, claim)
@@ -1494,7 +1524,20 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 		}
 
 		ctx2 := klog.NewContext(ctx, logger)
-		err = fmt.Errorf("failed to provision volume with StorageClass %q: %v", claimClass, err)
+
+		if isInfeasibleError(err) {
+			logger.V(2).Info("Detected infeasible volume provisioning request",
+				"error", err,
+				"claim", klog.KObj(claim))
+
+			ctrl.markForSlowRetry(ctx, claim, err)
+
+			ctrl.eventRecorder.Event(claim, v1.EventTypeWarning, "ProvisioningFailed",
+				fmt.Sprintf("Volume provisioning failed with infeasible error. Retries will be delayed. %v", err))
+
+			return ProvisioningFinished, err
+		}
+
 		return ctrl.provisionVolumeErrorHandling(ctx2, result, err, claim)
 	}
 
@@ -1517,6 +1560,62 @@ func (ctrl *ProvisionController) provisionClaimOperation(ctx context.Context, cl
 		return ProvisioningFinished, err
 	}
 	return ProvisioningFinished, nil
+}
+
+func (ctrl *ProvisionController) delayProvisioningIfRecentlyInfeasible(claim *v1.PersistentVolumeClaim) error {
+	key := string(claim.UID)
+
+	claimClass := util.GetPersistentVolumeClaimClass(claim)
+	currentClass, err := ctrl.getStorageClass(claimClass)
+	if err != nil {
+		return nil
+	}
+
+	if info, exists := ctrl.slowSet.Get(key); exists {
+		if info.StorageClassUID != string(currentClass.UID) {
+			ctrl.slowSet.Remove(key)
+			return nil
+		}
+	}
+	if delay := ctrl.slowSet.TimeRemaining(key); delay > 0 {
+		return util.NewDelayRetryError(fmt.Sprintf("skipping volume provisioning for pvc %s, because provisioning previously failed with infeasible error", key))
+	}
+	return nil
+}
+
+func (ctrl *ProvisionController) markForSlowRetry(ctx context.Context, claim *v1.PersistentVolumeClaim, err error) {
+	if isInfeasibleError(err) {
+		key := string(claim.UID)
+
+		claimClass := util.GetPersistentVolumeClaimClass(claim)
+		class, err := ctrl.getStorageClass(claimClass)
+		if err != nil {
+			logger := klog.FromContext(ctx)
+			logger.Error(err, "Failed to get StorageClass for delay tracking",
+				"PVC", klog.KObj(claim))
+			return
+		}
+
+		info := slowset.ObjectData{
+			Timestamp:       time.Now(),
+			StorageClassUID: string(class.UID),
+		}
+		ctrl.slowSet.Add(key, info)
+	}
+}
+
+func isInfeasibleError(err error) bool {
+
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	switch st.Code() {
+	case codes.InvalidArgument:
+		return true
+	}
+	return false
 }
 
 func (ctrl *ProvisionController) provisionVolumeErrorHandling(ctx context.Context, result ProvisioningState, err error, claim *v1.PersistentVolumeClaim) (ProvisioningState, error) {
