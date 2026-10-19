@@ -253,6 +253,8 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, 
 	}
 	// if a particular path was requested by storage class
 	if requestedPath != "" {
+		// config paths are normalized in canonicalizeStorageClassConfig
+		requestedPath = filepath.Clean(requestedPath)
 		if _, ok := paths[requestedPath]; !ok {
 			return "", fmt.Errorf("config doesn't contain path %v on node %v", requestedPath, node)
 		}
