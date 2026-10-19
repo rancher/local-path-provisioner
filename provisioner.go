@@ -923,13 +923,16 @@ func canonicalizeStorageClassConfig(data *StorageClassConfigData) (cfg *StorageC
 	cfg.SharedFileSystemPath = data.SharedFileSystemPath
 	cfg.NodePathMap = map[string]*NodePathMap{}
 	for _, n := range data.NodePathMap {
+		if n == nil {
+			return nil, fmt.Errorf("nodePathMap contains a null entry")
+		}
 		if cfg.NodePathMap[n.Node] != nil {
 			return nil, fmt.Errorf("duplicate node %v", n.Node)
 		}
 		npMap := &NodePathMap{Paths: map[string]struct{}{}}
 		cfg.NodePathMap[n.Node] = npMap
 		for _, p := range n.Paths {
-			if p[0] != '/' {
+			if !strings.HasPrefix(p, "/") {
 				return nil, fmt.Errorf("path must start with / for path %v on node %v", p, n.Node)
 			}
 			path, err := filepath.Abs(p)
