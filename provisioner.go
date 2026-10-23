@@ -51,8 +51,9 @@ const (
 )
 
 const (
-	defaultCmdTimeoutSeconds = 120
-	defaultVolumeType        = "hostPath"
+	defaultCmdTimeoutSeconds          = 120
+	defaultHelperPodLogTimeoutSeconds = 5
+	defaultVolumeType                 = "hostPath"
 )
 
 const (
@@ -66,6 +67,10 @@ var (
 	ConfigFileCheckInterval = 30 * time.Second
 
 	HelperPodNameMaxLength = 128
+
+	// HelperPodLogMaxBytes caps how much helper pod output is copied into
+	// the provisioner's log.
+	HelperPodLogMaxBytes int64 = 64 * 1024
 )
 
 type LocalPathProvisioner struct {
@@ -95,9 +100,10 @@ type StorageClassConfigData struct {
 }
 
 type ConfigData struct {
-	CmdTimeoutSeconds int    `json:"cmdTimeoutSeconds,omitempty"`
-	SetupCommand      string `json:"setupCommand,omitempty"`
-	TeardownCommand   string `json:"teardownCommand,omitempty"`
+	CmdTimeoutSeconds          int    `json:"cmdTimeoutSeconds,omitempty"`
+	HelperPodLogTimeoutSeconds int    `json:"helperPodLogTimeoutSeconds,omitempty"`
+	SetupCommand               string `json:"setupCommand,omitempty"`
+	TeardownCommand            string `json:"teardownCommand,omitempty"`
 	StorageClassConfigData
 	StorageClassConfigs map[string]StorageClassConfigData `json:"storageClassConfigs"`
 }
@@ -112,9 +118,10 @@ type NodePathMap struct {
 }
 
 type Config struct {
-	CmdTimeoutSeconds int
-	SetupCommand      string
-	TeardownCommand   string
+	CmdTimeoutSeconds          int
+	HelperPodLogTimeoutSeconds int
+	SetupCommand               string
+	TeardownCommand            string
 	StorageClassConfig
 	StorageClassConfigs map[string]StorageClassConfig
 }
@@ -805,9 +812,10 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		return err
 	}
 
+	logTimeout := time.Duration(p.config.HelperPodLogTimeoutSeconds) * time.Second
 	defer func() {
 		// log helper pod logs to the controller
-		if err := p.saveHelperPodLogs(pod); err != nil {
+		if err := p.saveHelperPodLogs(pod, logTimeout); err != nil {
 			logrus.Error(err.Error())
 		}
 		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(context.TODO(), helperPod.Name, metav1.DeleteOptions{})
@@ -912,6 +920,11 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 	} else {
 		cfg.CmdTimeoutSeconds = defaultCmdTimeoutSeconds
 	}
+	if data.HelperPodLogTimeoutSeconds > 0 {
+		cfg.HelperPodLogTimeoutSeconds = data.HelperPodLogTimeoutSeconds
+	} else {
+		cfg.HelperPodLogTimeoutSeconds = defaultHelperPodLogTimeoutSeconds
+	}
 	return cfg, nil
 }
 
@@ -979,29 +992,44 @@ func createPersistentVolumeSource(volumeType string, path string) (pvs v1.Persis
 // saveHelperPodLogs takes what is in stdout/stderr from the helper
 // pod and logs it to the provisioner's logs. Returns an error if we
 // can't retrieve the helper pod logs.
-func (p *LocalPathProvisioner) saveHelperPodLogs(pod *v1.Pod) (err error) {
+//
+// The logs are best effort: the helper's outcome is already known when this
+// runs, so one deadline covers both opening the stream and reading it, and at
+// most HelperPodLogMaxBytes are kept. A log request that never answers, or a
+// stream that never ends, must not hold back the provisioning or deletion
+// result.
+func (p *LocalPathProvisioner) saveHelperPodLogs(pod *v1.Pod, timeout time.Duration) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to save %s logs", pod.Name)
 	}()
 
-	// save helper pod logs
+	ctx, cancel := context.WithTimeout(p.ctx, timeout)
+	defer cancel()
+
+	// save helper pod logs, asking for one byte past the cap to detect truncation
+	limitBytes := HelperPodLogMaxBytes + 1
 	podLogOpts := v1.PodLogOptions{
-		Container: "helper-pod",
+		Container:  "helper-pod",
+		LimitBytes: &limitBytes,
 	}
 	req := p.kubeClient.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
-	podLogs, err := req.Stream(context.TODO())
+	podLogs, err := req.Stream(ctx)
 	if err != nil {
 		return fmt.Errorf("error in opening stream: %s", err.Error())
 	}
+	defer func() {
+		_ = podLogs.Close()
+	}()
 
 	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, podLogs)
-	if err != nil {
-		return fmt.Errorf("error in copying information from podLogs to buf: %s", err.Error())
+	_, copyErr := io.Copy(buf, io.LimitReader(podLogs, limitBytes))
+	truncated := int64(buf.Len()) > HelperPodLogMaxBytes
+	if truncated {
+		buf.Truncate(int(HelperPodLogMaxBytes))
 	}
-	_ = podLogs.Close()
 
-	// log all messages from the helper pod to the controller
+	// log all messages from the helper pod to the controller, including
+	// whatever arrived before a failed read
 	logrus.Infof("Start of %s logs", pod.Name)
 	bufferStr := buf.String()
 	if len(bufferStr) > 0 {
@@ -1010,6 +1038,13 @@ func (p *LocalPathProvisioner) saveHelperPodLogs(pod *v1.Pod) (err error) {
 			logrus.Info(log)
 		}
 	}
+	if truncated {
+		logrus.Infof("%s logs truncated at %d bytes", pod.Name, HelperPodLogMaxBytes)
+	}
 	logrus.Infof("End of %s logs", pod.Name)
+
+	if copyErr != nil {
+		return fmt.Errorf("error in copying information from podLogs to buf: %s", copyErr.Error())
+	}
 	return nil
 }
