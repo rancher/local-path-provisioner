@@ -230,7 +230,9 @@ func (p *LocalPathProvisioner) getPathOnNode(node string, requestedPath string, 
 		return "", fmt.Errorf("no valid config available")
 	}
 
-	sharedFS, err := p.isSharedFilesystem(c)
+	// configMutex is already read-locked here; calling p.isSharedFilesystem
+	// would RLock it again, which deadlocks if refreshConfig is waiting on Lock.
+	sharedFS, err := c.isSharedFilesystem()
 	if err != nil {
 		return "", err
 	}
@@ -276,7 +278,10 @@ func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, 
 	if p.config == nil {
 		return false, fmt.Errorf("no valid config available")
 	}
+	return c.isSharedFilesystem()
+}
 
+func (c *StorageClassConfig) isSharedFilesystem() (bool, error) {
 	if (c.SharedFileSystemPath != "") && (len(c.NodePathMap) != 0) {
 		return false, fmt.Errorf("both nodePathMap and sharedFileSystemPath are defined. Please make sure only one is in use")
 	}
@@ -293,6 +298,9 @@ func (p *LocalPathProvisioner) isSharedFilesystem(c *StorageClassConfig) (bool, 
 }
 
 func (p *LocalPathProvisioner) pickConfig(storageClassName string) (*StorageClassConfig, error) {
+	p.configMutex.RLock()
+	defer p.configMutex.RUnlock()
+
 	if len(p.config.StorageClassConfigs) == 0 {
 		return &p.config.StorageClassConfig, nil
 	}
