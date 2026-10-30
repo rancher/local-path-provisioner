@@ -326,11 +326,13 @@ volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
 
-When using this parameter, make sure every node in the cluster has the specified label set. The provisioner reads the label value from the selected node at provisioning time and writes it into the PV's `nodeAffinity` field.
+When using this parameter, make sure every node in the cluster has the specified label set, with a value unique to that node. The provisioner reads the label value from the selected node at provisioning time and writes it into the PV's `nodeAffinity` field. If the selected node does not have the label, provisioning fails and the claim is rescheduled so another node can be selected.
+
+When such a PV is deleted, the provisioner cleans up the volume on the node that currently carries the label value, which may be a node recreated under a new name. If no node carries it, the node the volume was provisioned on is used, and cleanup is skipped if that node no longer exists. If more than one node carries the value, deletion fails until the labels are fixed.
 
 If the parameter is not specified, the default `kubernetes.io/hostname` behavior is preserved.
 
-**Upgrade note:** Existing PVs created before adding `nodeAffinityKey` retain their original `kubernetes.io/hostname` affinity. The provisioner handles deletion of both old and new PVs transparently. Only newly provisioned PVs will use the custom key.
+**Upgrade note:** Existing PVs created before adding `nodeAffinityKey` retain their original `kubernetes.io/hostname` affinity and are deleted as before. Only newly provisioned PVs will use the custom key.
 
 ## Uninstall
 
