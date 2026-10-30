@@ -19,7 +19,13 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -28,7 +34,7 @@ metadata:
   name: local-path-provisioner-role
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "persistentvolumeclaims", "configmaps", "pods", "pods/log"]
+    resources: ["nodes", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
