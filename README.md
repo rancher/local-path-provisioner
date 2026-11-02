@@ -212,6 +212,10 @@ The `setupCommand` and `teardownCommand` allow you to specify the path to binary
 
 The `setupCommand` and `teardownCommand` have higher priority than the `setup` and `teardown` scripts from the ConfigMap.  
 
+`helperPodLogTimeoutSeconds` (default `5`) bounds how long the provisioner waits to copy a finished helper pod's output into its own log.
+Helper pod logs are best effort: if the log request does not complete in time, the provisioner logs an error and still returns the helper pod's result.
+At most 64 KiB of each helper pod's output is copied.
+
 ##### Rules
 The configuration must obey following rules:
 1. `config.json` must be a valid json file.
