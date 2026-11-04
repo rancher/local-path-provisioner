@@ -818,16 +818,19 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 
 	completed := false
 	for i := 0; i < p.config.CmdTimeoutSeconds; i++ {
-		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(context.TODO(), helperPod.Name, metav1.GetOptions{}); err != nil {
+		pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(context.TODO(), helperPod.Name, metav1.GetOptions{})
+		if err != nil {
 			return err
-		} else if pod.Status.Phase == v1.PodSucceeded {
-			completed = true
+		}
+		if completed, err = helperPodFinished(pod); err != nil {
+			return err
+		} else if completed {
 			break
 		}
 		time.Sleep(1 * time.Second)
 	}
 	if !completed {
-		return fmt.Errorf("create process timeout after %v seconds", p.config.CmdTimeoutSeconds)
+		return fmt.Errorf("%v process timeout after %v seconds", action, p.config.CmdTimeoutSeconds)
 	}
 
 	if o.Node == "" {
@@ -836,6 +839,31 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 		logrus.Infof("Volume %v has been %vd on %v:%v", o.Name, action, o.Node, o.Path)
 	}
 	return nil
+}
+
+// helperPodFinished reports whether the helper pod has run to completion.
+// The helper pod never restarts, so a failed pod is final: report it right
+// away instead of polling until cmdTimeoutSeconds expires.
+func helperPodFinished(pod *v1.Pod) (bool, error) {
+	switch pod.Status.Phase {
+	case v1.PodSucceeded:
+		return true, nil
+	case v1.PodFailed:
+		return false, fmt.Errorf("helper pod %s failed: %s", pod.Name, helperPodFailureReason(pod))
+	}
+	return false, nil
+}
+
+func helperPodFailureReason(pod *v1.Pod) string {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if t := cs.State.Terminated; t != nil {
+			return fmt.Sprintf("container %s exited with code %d (%s)", cs.Name, t.ExitCode, t.Reason)
+		}
+	}
+	if pod.Status.Reason != "" {
+		return pod.Status.Reason
+	}
+	return "unknown reason"
 }
 
 func addVolumeMount(mounts *[]v1.VolumeMount, name, mountPath string) *v1.VolumeMount {
