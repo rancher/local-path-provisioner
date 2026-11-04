@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -243,7 +244,7 @@ func startDaemon(c *cli.Command) error {
 	}
 
 	healthPort := c.Int(FlagHealthPort)
-	startHealthServer(ctx, healthPort, kubeClient, namespace)
+	startHealthServer(healthPort, kubeClient, namespace)
 	configFile := c.String(FlagConfigFile)
 	if configFile == "" {
 		configFile, err = findConfigFileFromConfigMap(kubeClient, namespace, configMapName, DefaultConfigFileKey)
@@ -354,12 +355,12 @@ func main() {
 	}
 }
 
-func startHealthServer(ctx context.Context, port int, kubeClient clientset.Interface, namespace string) {
+func startHealthServer(port int, kubeClient clientset.Interface, namespace string) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
-		readyHandler(ctx, kubeClient, namespace, w, r)
+		readyHandler(kubeClient, namespace, w, r)
 	})
 
 	address := fmt.Sprintf(":%d", port)
@@ -383,7 +384,14 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func readyHandler(ctx context.Context, kubeClient clientset.Interface, namespace string, w http.ResponseWriter, r *http.Request) {
+// readinessCheckTimeout bounds a /ready request whose client never gives up.
+// The kubelet cancels the request itself when its probe timeout expires.
+const readinessCheckTimeout = 10 * time.Second
+
+func readyHandler(kubeClient clientset.Interface, namespace string, w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), readinessCheckTimeout)
+	defer cancel()
+
 	err := checkReadiness(ctx, kubeClient, namespace)
 	if err != nil {
 		logrus.Warnf("Readiness check failed: %v", err)

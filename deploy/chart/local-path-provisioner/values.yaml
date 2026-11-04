@@ -238,4 +238,5 @@ health:
       path: /ready
       port: health
     initialDelaySeconds: 5
-    periodSeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5

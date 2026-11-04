@@ -46,7 +46,8 @@ spec:
               path: /ready
               port: health
             initialDelaySeconds: 5
-            periodSeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config/
