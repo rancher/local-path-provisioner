@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27.1
+# syntax=docker/dockerfile:1.28.0
 
 # Helper stage: validate the target platform and source a CA certificate bundle.
 # The final image is scratch, so it carries only the statically-linked binary and
